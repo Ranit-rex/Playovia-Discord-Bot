@@ -270,7 +270,7 @@ async function handleMusicInteraction(interaction) {
     return true;
   }
   if (name === "nowplaying") {
-    await interaction.reply({ content: state.current ? "🎶 Now playing: **" + (state.current.title || state.current.url) + "**" + (state.current.artist ? " — " + state.current.artist : "") + "\n" + (state.current.license ? "License: <" + state.current.license + ">" : "<" + state.current.url + ">"), ephemeral: false });
+    await interaction.reply({ content: state.current ? "🎶 Now playing: **" + (state.current.title || state.current.url) + "**" + (state.current.artist ? " — " + state.current.artist : "") + "\n" + (state.current.license ? "License: <" + state.current.license + ">" : "<" + state.current.url + ">") : "Nothing is playing.", ephemeral: false });
     return true;
   }
   if (name === "volume") {
