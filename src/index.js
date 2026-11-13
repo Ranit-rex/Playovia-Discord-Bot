@@ -1,3 +1,5 @@
+const { musicCommands, handleMusicInteraction } = require("./music");
+
 const {
   Client,
   GatewayIntentBits,
@@ -31,6 +33,7 @@ const apiBase = (process.env.PLAYOVIA_API_URL || "https://test-gameonix.onrender
 const integrationToken = process.env.PLAYOVIA_DISCORD_TOKEN || "";
 
 const commands = [
+  ...musicCommands.map(command => command),
   new SlashCommandBuilder()
     .setName("panel")
     .setDescription("Open the Playovia admin dashboard"),
@@ -193,6 +196,7 @@ client.once(Events.ClientReady, readyClient => {
 
 client.on(Events.InteractionCreate, async interaction => {
   try {
+    if (await handleMusicInteraction(interaction)) return;
     if (interaction.isStringSelectMenu() && interaction.customId === "pv:panel:section") {
       const overview = await getPlayoviaOverview();
       await interaction.update(buildPanelPayload(interaction.values[0], overview));
