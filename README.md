@@ -1,21 +1,25 @@
 # Playovia Discord Bot
 
-## Music commands
+Discord control interface for the Playovia website. The bot uses Discord Components V2 for its dashboard. Voice and music features have been removed.
 
-- `/join` — join your current voice channel.
-- `/youtube-search query` — search YouTube and post video links. YouTube audio extraction/playback is not provided.
-- `/jamendo-play query` — find and play a Creative Commons track from Jamendo.
-- `/play url` — play a permitted direct HTTPS audio-stream URL.
-- `/pause`, `/resume`, `/skip`, `/stop`, `/queue`, `/nowplaying`, `/volume`, `/leave`.
+## Commands
+- `/panel` — Components V2 control center with Overview, Website Analytics, AI Operations and System Health.
+- `/status` — live backend status.
+- `/traffic` — website analytics (admins only).
+- `/ai-stats` — AI usage (admins only).
+- `/maintenance enabled:true|false` — website maintenance control (admins only).
+- `/admin-check` — check Discord admin allowlist.
+- `/ping` — bot health.
 
-## Required Enzonic environment variables
-
-Keep all keys in Enzonic environment variables; never commit them to GitHub.
-
+## Enzonic environment variables
 - `DISCORD_BOT_TOKEN`
 - `DISCORD_APPLICATION_ID`
-- `YOUTUBE_API_KEY` — enables YouTube video search.
-- `JAMENDO_CLIENT_ID` — enables Jamendo Creative Commons music search and playback.
-- Existing Playovia integration variables: `PLAYOVIA_API_URL`, `PLAYOVIA_DISCORD_TOKEN`, and optionally `DISCORD_ADMIN_IDS` / `DISCORD_GUILD_ID`.
+- `PLAYOVIA_API_URL` (defaults to `https://test-gameonix.onrender.com`)
+- `PLAYOVIA_DISCORD_TOKEN` (must exactly match Render `DISCORD_INTEGRATION_TOKEN`)
+- `DISCORD_ADMIN_IDS` (comma-separated Discord user IDs)
+- Optional `DISCORD_GUILD_ID` for instant guild command registration.
 
-Music playback requires the bot to have Connect and Speak permissions in the target voice channel. Jamendo tracks are selected from API results that provide an audio stream and a Creative Commons license URL.
+All provider keys stay on the Playovia backend. Do not commit secrets to GitHub.
+
+## Current backend scope
+The backend currently exposes Discord-authenticated overview and maintenance endpoints. Additional website administration features need dedicated Discord-authorized API endpoints before they can be safely surfaced in the bot. Current traffic and AI counters are in-memory and reset when the backend restarts.
