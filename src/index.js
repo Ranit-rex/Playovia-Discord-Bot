@@ -5,6 +5,10 @@ const {
   Routes,
   SlashCommandBuilder,
   EmbedBuilder,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   Events,
   ActivityType
 } = require("discord.js");
@@ -27,6 +31,9 @@ const apiBase = (process.env.PLAYOVIA_API_URL || "https://test-gameonix.onrender
 const integrationToken = process.env.PLAYOVIA_DISCORD_TOKEN || "";
 
 const commands = [
+  new SlashCommandBuilder()
+    .setName("panel")
+    .setDescription("Open the Playovia admin dashboard"),
   new SlashCommandBuilder()
     .setName("ping")
     .setDescription("Check whether the Discord bot is responding"),
@@ -71,13 +78,112 @@ async function getPlayoviaOverview() {
   return data;
 }
 
+
+function buildPanelPayload(section, overview) {
+  const traffic = overview.traffic || {};
+  const ai = overview.ai || {};
+  const configured = Object.entries(overview.providersConfigured || {})
+    .filter(([, ready]) => ready).map(([name]) => name.toUpperCase());
+  const providerUsage = Object.entries(ai.byProvider || {})
+    .map(([name, count]) => `**${name.toUpperCase()}** · ${count} requests`).join("\\n") || "No AI requests recorded yet.";
+  const topPages = (traffic.topPages || [])
+    .map(item => `• ${String(item.path).slice(0, 70)} — **${item.views}** views`).join("\\n") || "No pageviews recorded yet.";
+  const uptime = Math.floor(Number(overview.uptimeSeconds) || 0);
+  const sectionData = {
+    overview: {
+      title: "Playovia · Control Center",
+      description: "Live overview of your Playovia website and AI backend.",
+      color: 0x7c5cff,
+      fields: [
+        { name: "Backend", value: overview.ok ? "🟢 Online" : "🔴 Offline", inline: true },
+        { name: "Maintenance", value: overview.maintenanceMode ? "🟠 ON" : "🟢 OFF", inline: true },
+        { name: "Uptime", value: `${uptime}s`, inline: true },
+        { name: "Website pageviews today", value: String(traffic.todayPageviews || 0), inline: true },
+        { name: "Unique sessions today", value: String(traffic.uniqueSessionsToday || 0), inline: true },
+        { name: "AI requests", value: String(ai.total || 0), inline: true },
+        { name: "AI providers", value: configured.join(", ") || "None configured", inline: false }
+      ]
+    },
+    traffic: {
+      title: "Playovia · Website Analytics",
+      description: "Website activity excluding game pages.",
+      color: 0x06b6d4,
+      fields: [
+        { name: "Pageviews today", value: String(traffic.todayPageviews || 0), inline: true },
+        { name: "Unique sessions today", value: String(traffic.uniqueSessionsToday || 0), inline: true },
+        { name: "All-time pageviews", value: String(traffic.totalPageviews || 0), inline: true },
+        { name: "Top pages", value: topPages, inline: false }
+      ]
+    },
+    ai: {
+      title: "Playovia · AI Operations",
+      description: "Usage totals and configured AI providers. API keys are never shown.",
+      color: 0x5865f2,
+      fields: [
+        { name: "Total requests", value: String(ai.total || 0), inline: true },
+        { name: "Successful", value: String(ai.success || 0), inline: true },
+        { name: "Failed", value: String(ai.failed || 0), inline: true },
+        { name: "Configured providers", value: configured.join(", ") || "None", inline: false },
+        { name: "Provider usage", value: providerUsage, inline: false }
+      ]
+    },
+    system: {
+      title: "Playovia · System Health",
+      description: "Backend and integration diagnostics.",
+      color: 0x22c55e,
+      fields: [
+        { name: "API service", value: overview.ok ? "🟢 Healthy" : "🔴 Unavailable", inline: true },
+        { name: "Uptime", value: `${uptime} seconds`, inline: true },
+        { name: "Maintenance mode", value: overview.maintenanceMode ? "Enabled" : "Disabled", inline: true },
+        { name: "Gemini", value: overview.providersConfigured?.gemini ? "Configured" : "Not configured", inline: true },
+        { name: "Groq", value: overview.providersConfigured?.groq ? "Configured" : "Not configured", inline: true },
+        { name: "OpenRouter", value: overview.providersConfigured?.openrouter ? "Configured" : "Not configured", inline: true },
+        { name: "Last refresh", value: new Date(overview.generatedAt || Date.now()).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }), inline: false }
+      ]
+    }
+  };
+  const view = sectionData[section] || sectionData.overview;
+  const embed = new EmbedBuilder().setColor(view.color).setTitle(view.title)
+    .setDescription(view.description).addFields(view.fields)
+    .setFooter({ text: "Playovia Control • Public dashboard • Counters are currently in-memory" })
+    .setTimestamp(new Date(overview.generatedAt || Date.now()));
+  const select = new StringSelectMenuBuilder()
+    .setCustomId("pv:panel:section")
+    .setPlaceholder("Choose a dashboard section")
+    .addOptions(
+      { label: "Overview", value: "overview", description: "Website and backend summary", default: section === "overview" },
+      { label: "Website Analytics", value: "traffic", description: "Pageviews and top pages", default: section === "traffic" },
+      { label: "AI Operations", value: "ai", description: "AI usage and provider status", default: section === "ai" },
+      { label: "System Health", value: "system", description: "Backend and integration status", default: section === "system" }
+    );
+  const rows = [new ActionRowBuilder().addComponents(select)];
+  rows.push(new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId("pv:panel:maintenance:on").setLabel("Maintenance ON").setStyle(ButtonStyle.Danger).setDisabled(!!overview.maintenanceMode),
+    new ButtonBuilder().setCustomId("pv:panel:maintenance:off").setLabel("Maintenance OFF").setStyle(ButtonStyle.Success).setDisabled(!overview.maintenanceMode),
+    new ButtonBuilder().setCustomId("pv:panel:refresh").setLabel("Refresh").setStyle(ButtonStyle.Secondary)
+  ));
+  return { embeds: [embed], components: rows };
+}
+
+async function setMaintenance(enabled) {
+  const response = await fetch(apiBase + "/api/discord/maintenance", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + integrationToken, "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+    signal: AbortSignal.timeout(12000)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Maintenance setting failed.");
+  return data;
+}
+
 async function registerCommands() {
   const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_BOT_TOKEN);
   const route = process.env.DISCORD_GUILD_ID
     ? Routes.applicationGuildCommands(process.env.DISCORD_APPLICATION_ID, process.env.DISCORD_GUILD_ID)
     : Routes.applicationCommands(process.env.DISCORD_APPLICATION_ID);
   await rest.put(route, { body: commands });
-  console.log("Registered Playovia public commands: /ping, /status, /ai-stats, /admin-check, /traffic and /maintenance.");
+  console.log("Registered Playovia dashboard and public commands: /panel, /ping, /status, /ai-stats, /admin-check, /traffic and /maintenance.");
 }
 
 client.once(Events.ClientReady, readyClient => {
@@ -86,9 +192,41 @@ client.once(Events.ClientReady, readyClient => {
 });
 
 client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
   try {
+    if (interaction.isStringSelectMenu() && interaction.customId === "pv:panel:section") {
+      const overview = await getPlayoviaOverview();
+      await interaction.update(buildPanelPayload(interaction.values[0], overview));
+      return;
+    }
+
+    if (interaction.isButton() && interaction.customId.startsWith("pv:panel:")) {
+      if (!isAdmin(interaction.user.id)) {
+        await interaction.reply({ content: "Admin only. Your account is not on DISCORD_ADMIN_IDS.", ephemeral: false });
+        return;
+      }
+      const action = interaction.customId.split(":")[2];
+      if (action === "maintenance") {
+        const enabled = interaction.customId.endsWith(":on");
+        await setMaintenance(enabled);
+      }
+      const overview = await getPlayoviaOverview();
+      await interaction.update(buildPanelPayload("overview", overview));
+      return;
+    }
+
+    if (!interaction.isChatInputCommand()) return;
+
+    if (interaction.commandName === "panel") {
+      if (!isAdmin(interaction.user.id)) {
+        await interaction.reply({ content: "Admin only. Add your Discord user ID to DISCORD_ADMIN_IDS in Enzonic.", ephemeral: false });
+        return;
+      }
+      await interaction.deferReply();
+      const overview = await getPlayoviaOverview();
+      await interaction.editReply(buildPanelPayload("overview", overview));
+      return;
+    }
+
     if (interaction.commandName === "ping") {
       await interaction.reply({ content: "Pong! Playovia Control is online.", ephemeral: false });
       return;
