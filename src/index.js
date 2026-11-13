@@ -38,7 +38,14 @@ const commands = [
     .setDescription("View live Playovia AI usage statistics (admins only)"),
   new SlashCommandBuilder()
     .setName("admin-check")
-    .setDescription("Check whether your Discord account is authorized")
+    .setDescription("Check whether your Discord account is authorized"),
+  new SlashCommandBuilder()
+    .setName("traffic")
+    .setDescription("View Playovia website traffic analytics (admins only)"),
+  new SlashCommandBuilder()
+    .setName("maintenance")
+    .setDescription("Turn Playovia website maintenance mode on or off (admins only)")
+    .addBooleanOption(option => option.setName("enabled").setDescription("Enable maintenance mode").setRequired(true))
 ].map(command => command.toJSON());
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -70,7 +77,7 @@ async function registerCommands() {
     ? Routes.applicationGuildCommands(process.env.DISCORD_APPLICATION_ID, process.env.DISCORD_GUILD_ID)
     : Routes.applicationCommands(process.env.DISCORD_APPLICATION_ID);
   await rest.put(route, { body: commands });
-  console.log("Registered /ping, /status, /ai-stats and /admin-check.");
+  console.log("Registered Playovia public commands: /ping, /status, /ai-stats, /admin-check, /traffic and /maintenance.");
 }
 
 client.once(Events.ClientReady, readyClient => {
@@ -83,7 +90,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
   try {
     if (interaction.commandName === "ping") {
-      await interaction.reply({ content: "Pong! Playovia Control is online.", ephemeral: true });
+      await interaction.reply({ content: "Pong! Playovia Control is online.", ephemeral: false });
       return;
     }
 
@@ -92,13 +99,13 @@ client.on(Events.InteractionCreate, async interaction => {
         content: isAdmin(interaction.user.id)
           ? "Authorized: your Discord account is on the Playovia admin allowlist."
           : "Not authorized. Add your Discord user ID to DISCORD_ADMIN_IDS in Enzonic.",
-        ephemeral: true
+        ephemeral: false
       });
       return;
     }
 
     if (interaction.commandName === "status") {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply();
       const overview = await getPlayoviaOverview();
       const configured = Object.entries(overview.providersConfigured || {})
         .filter(([, value]) => value)
@@ -116,12 +123,55 @@ client.on(Events.InteractionCreate, async interaction => {
       return;
     }
 
-    if (interaction.commandName === "ai-stats") {
+    if (interaction.commandName === "traffic") {
       if (!isAdmin(interaction.user.id)) {
-        await interaction.reply({ content: "Admin only. Your Discord user ID is not on DISCORD_ADMIN_IDS.", ephemeral: true });
+        await interaction.reply({ content: "Admin only. Add your Discord user ID to DISCORD_ADMIN_IDS in Enzonic.", ephemeral: false });
         return;
       }
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply();
+      const overview = await getPlayoviaOverview();
+      const traffic = overview.traffic || {};
+      const pages = (traffic.topPages || []).map(item => `${item.path}: ${item.views}`).join("\\n") || "No pageviews recorded yet.";
+      const embed = new EmbedBuilder()
+        .setColor(0x06b6d4)
+        .setTitle("Playovia Website Traffic")
+        .addFields(
+          { name: "Pageviews today", value: String(traffic.todayPageviews || 0), inline: true },
+          { name: "Unique sessions today", value: String(traffic.uniqueSessionsToday || 0), inline: true },
+          { name: "All-time pageviews", value: String(traffic.totalPageviews || 0), inline: true },
+          { name: "Top pages", value: pages, inline: false }
+        )
+        .setFooter({ text: "In-memory analytics; counters reset when the backend restarts." })
+        .setTimestamp(new Date(overview.generatedAt || Date.now()));
+      await interaction.editReply({ embeds: [embed] });
+      return;
+    }
+
+    if (interaction.commandName === "maintenance") {
+      if (!isAdmin(interaction.user.id)) {
+        await interaction.reply({ content: "Admin only. Add your Discord user ID to DISCORD_ADMIN_IDS in Enzonic.", ephemeral: false });
+        return;
+      }
+      const enabled = interaction.options.getBoolean("enabled", true);
+      await interaction.deferReply();
+      const response = await fetch(apiBase + "/api/discord/maintenance", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + integrationToken, "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+        signal: AbortSignal.timeout(12000)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Maintenance setting failed.");
+      await interaction.editReply({ content: `Playovia maintenance mode is now **${data.maintenanceMode ? "ON" : "OFF"}**. The website will show a maintenance notice.` });
+      return;
+    }
+
+    if (interaction.commandName === "ai-stats") {
+      if (!isAdmin(interaction.user.id)) {
+        await interaction.reply({ content: "Admin only. Your Discord user ID is not on DISCORD_ADMIN_IDS.", ephemeral: false });
+        return;
+      }
+      await interaction.deferReply();
       const overview = await getPlayoviaOverview();
       const ai = overview.ai || {};
       const providers = Object.entries(ai.byProvider || {})
@@ -146,7 +196,7 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply({ content: message, embeds: [] }).catch(() => {});
     } else {
-      await interaction.reply({ content: message, ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: message, ephemeral: false }).catch(() => {});
     }
   }
 });
