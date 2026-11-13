@@ -69,6 +69,28 @@ async function getOverview() {
   return api("/api/discord/overview");
 }
 
+async function adminAction(action, payload = {}) {
+  const response = await fetch(apiBase + "/api/discord/admin", { method: "POST", headers: { Authorization: "Bearer " + integrationToken, "Content-Type": "application/json" }, body: JSON.stringify({ action, actor: payload.actor || "discord", ...payload }), signal: AbortSignal.timeout(15000) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Admin API returned HTTP " + response.status);
+  return data;
+}
+function adminCard(message, color = 0x7657ff) {
+  return { components: [new ContainerBuilder().setAccentColor(color).addTextDisplayComponents(text(message))], flags: V2 };
+}
+function adminList(title, rows, render) {
+  return "## " + title + String.fromCharCode(10) + (rows && rows.length ? rows.map((x,i)=>(i+1)+". "+render(x)).join(String.fromCharCode(10)).slice(0,3800) : "No records found.");
+}
+async function adminSection(section) {
+  const d = await adminAction(section);
+  if (section === "analytics") return "## 📊 Live Website Analytics" + String.fromCharCode(10) + "Players: **" + d.players + (d.playersSampled?"+":"") + "**" + String.fromCharCode(10) + "New · 7 days: **" + d.newPlayers7d + "**" + String.fromCharCode(10) + "Open reports: **" + d.openReports + "**" + String.fromCharCode(10) + "Playing now: **" + d.playingNow + "**" + String.fromCharCode(10) + "Game plays today: **" + d.playsToday + "**" + String.fromCharCode(10) + "Game overrides: **" + d.gameOverrides + "**" + String.fromCharCode(10) + "Admin actions: **" + d.adminActions + "**";
+  if (section === "users") return adminList("👥 Recent Players",d.users,u=>"**"+u.displayName+"** · "+u.uid+" · "+u.currencyBalance+" coins · "+(u.banned?"BANNED":"Active"));
+  if (section === "reports") return adminList("🚩 Reports",d.reports,x=>"**"+x.type+"** · "+x.status+" · "+x.id+" | "+x.description);
+  if (section === "announcements") return adminList("📢 Announcements",d.announcements,x=>"**"+x.title+"** · "+x.id+" | "+x.body);
+  if (section === "games") return adminList("🎮 Game Listings",d.games,x=>"**"+(x.title||x.slug)+"** · "+x.slug+" · "+(x.enabled===false?"Hidden":"Visible"));
+  return adminList("🧾 Admin Activity",d.activity,x=>"**"+x.action+"** · "+(x.targetUid||x.reason||"—"));
+}
+
 function text(value) {
   return new TextDisplayBuilder().setContent(value);
 }
@@ -136,7 +158,13 @@ function buildPanelPayload(section, overview) {
       { label: "Overview", value: "overview", emoji: "🏠", default: section === "overview" },
       { label: "Website Analytics", value: "traffic", emoji: "📊", default: section === "traffic" },
       { label: "AI Operations", value: "ai", emoji: "🤖", default: section === "ai" },
-      { label: "System Health", value: "system", emoji: "🛠️", default: section === "system" }
+      { label: "System Health", value: "system", emoji: "🛠️", default: section === "system" },
+      { label: "Live Analytics", value: "analytics", emoji: "📈", default: section === "analytics" },
+      { label: "Players", value: "users", emoji: "👥", default: section === "users" },
+      { label: "Reports", value: "reports", emoji: "🚩", default: section === "reports" },
+      { label: "Announcements", value: "announcements", emoji: "📢", default: section === "announcements" },
+      { label: "Game Listings", value: "games", emoji: "🎮", default: section === "games" },
+      { label: "Admin Activity", value: "activity", emoji: "🧾", default: section === "activity" }
     );
   const controls = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("pv:v2:maintenance:on").setLabel("Enable maintenance").setEmoji("🔒").setStyle(ButtonStyle.Danger).setDisabled(!!overview.maintenanceMode),
@@ -156,6 +184,10 @@ function buildPanelPayload(section, overview) {
 }
 
 async function updatePanel(interaction, section = "overview") {
+  if (["analytics","users","reports","announcements","games","activity"].includes(section)) {
+    await interaction.update(adminCard(await adminSection(section)));
+    return;
+  }
   const overview = await getOverview();
   await interaction.update(buildPanelPayload(section, overview));
 }
