@@ -331,7 +331,8 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.editReply(adminCard("## 🎮 Game Listing Updated\nSlug: "+d.slug+"\nVisibility: **"+(d.enabled?"Visible":"Hidden")+"**"));
       return;
     }
-\n    if (name === "maintenance") {
+
+    if (name === "maintenance") {
       if (!isAdmin(interaction.user.id)) {
         await interaction.reply({ content: "Admin only.", flags: MessageFlags.Ephemeral });
         return;
