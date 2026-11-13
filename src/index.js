@@ -37,7 +37,14 @@ const commands = [
   new SlashCommandBuilder().setName("traffic").setDescription("View website traffic analytics (admins only)"),
   new SlashCommandBuilder().setName("ai-stats").setDescription("View AI usage statistics (admins only)"),
   new SlashCommandBuilder().setName("maintenance").setDescription("Set website maintenance mode (admins only)")
-    .addBooleanOption(o => o.setName("enabled").setDescription("Enable maintenance mode").setRequired(true))
+    .addBooleanOption(o => o.setName("enabled").setDescription("Enable maintenance mode").setRequired(true)),
+new SlashCommandBuilder().setName("player-search").setDescription("Find a player by Playovia Player ID").addStringOption(o=>o.setName("player-id").setDescription("5 letters + 4 digits").setRequired(true).setMaxLength(9)),
+  new SlashCommandBuilder().setName("admin-data").setDescription("View Playovia website data").addStringOption(o=>o.setName("section").setDescription("Section").setRequired(true).addChoices({name:"Analytics",value:"analytics"},{name:"Players",value:"users"},{name:"Reports",value:"reports"},{name:"Announcements",value:"announcements"},{name:"Game listings",value:"games"},{name:"Admin activity",value:"activity"})),
+  new SlashCommandBuilder().setName("player-ban").setDescription("Ban or unban a player").addStringOption(o=>o.setName("uid").setDescription("Player UID").setRequired(true)).addBooleanOption(o=>o.setName("banned").setDescription("True to ban").setRequired(true)).addStringOption(o=>o.setName("reason").setDescription("Reason").setMaxLength(300)),
+  new SlashCommandBuilder().setName("currency").setDescription("Adjust player coins").addStringOption(o=>o.setName("uid").setDescription("Player UID").setRequired(true)).addStringOption(o=>o.setName("operation").setDescription("Operation").setRequired(true).addChoices({name:"Add",value:"add"},{name:"Remove",value:"remove"},{name:"Set",value:"set"})).addIntegerOption(o=>o.setName("amount").setDescription("Positive whole number").setRequired(true).setMinValue(1)).addStringOption(o=>o.setName("reason").setDescription("Audit reason").setRequired(true).setMaxLength(300)),
+  new SlashCommandBuilder().setName("report-update").setDescription("Update a report").addStringOption(o=>o.setName("id").setDescription("Report ID").setRequired(true)).addStringOption(o=>o.setName("status").setDescription("New status").setRequired(true).addChoices({name:"Open",value:"open"},{name:"Resolved",value:"resolved"},{name:"Dismissed",value:"dismissed"},{name:"Closed",value:"closed"})),
+  new SlashCommandBuilder().setName("announcement").setDescription("Publish a website announcement").addStringOption(o=>o.setName("title").setDescription("Title").setRequired(true).setMaxLength(120)).addStringOption(o=>o.setName("body").setDescription("Body").setRequired(true).setMaxLength(1500)),
+  new SlashCommandBuilder().setName("game-setting").setDescription("Change a game listing").addStringOption(o=>o.setName("slug").setDescription("Game slug").setRequired(true)).addStringOption(o=>o.setName("title").setDescription("Title").setRequired(true).setMaxLength(120)).addStringOption(o=>o.setName("category").setDescription("Category").setRequired(true).setMaxLength(60)).addStringOption(o=>o.setName("description").setDescription("Description").setRequired(true).setMaxLength(500)).addBooleanOption(o=>o.setName("enabled").setDescription("Visible on website").setRequired(true))
 ].map(c => c.toJSON());
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -231,7 +238,56 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.editReply({ components: [card], flags: V2 });
       return;
     }
-    if (name === "maintenance") {
+
+    if (name === "player-search") {
+      if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
+      await interaction.deferReply();
+      const d=await adminAction("player_search",{playerId:interaction.options.getString("player-id",true),actor:interaction.user.id}),p=d.player;
+      await interaction.editReply(adminCard("## 🔎 Player Profile\\nName: **"+p.displayName+"**\\nUsername: "+(p.username||"—")+"\\nPlayer ID: **"+d.playerId+"**\\nUID: "+p.uid+"\\nEmail: "+(p.email||"Not stored")+"\\nCoins: **"+p.currencyBalance+"**\\nStatus: **"+(p.banned?"BANNED":"Active")+"**\\nBan reason: "+(p.banReason||"—")));
+      return;
+    }
+    if (name === "admin-data") {
+      if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
+      await interaction.deferReply();
+      await interaction.editReply(adminCard(await adminSection(interaction.options.getString("section",true))));
+      return;
+    }
+    if (name === "player-ban") {
+      if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
+      await interaction.deferReply();
+      const banned=interaction.options.getBoolean("banned",true),d=await adminAction("set_ban",{uid:interaction.options.getString("uid",true),banned,reason:interaction.options.getString("reason")||"",actor:interaction.user.id});
+      await interaction.editReply(adminCard("## "+(banned?"🔒 Player Banned":"🔓 Player Unbanned")+"\\nUID: "+d.uid+"\\nStatus: **"+(d.banned?"BANNED":"ACTIVE")+"**",banned?0xed4245:0x57f287));
+      return;
+    }
+    if (name === "currency") {
+      if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
+      await interaction.deferReply();
+      const d=await adminAction("currency",{uid:interaction.options.getString("uid",true),operation:interaction.options.getString("operation",true),amount:interaction.options.getInteger("amount",true),reason:interaction.options.getString("reason",true),actor:interaction.user.id});
+      await interaction.editReply(adminCard("## 🪙 Currency Updated\\nUID: "+d.uid+"\\nBalance: **"+d.before+" → "+d.after+"**"));
+      return;
+    }
+    if (name === "report-update") {
+      if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
+      await interaction.deferReply();
+      const d=await adminAction("report_update",{id:interaction.options.getString("id",true),status:interaction.options.getString("status",true),actor:interaction.user.id});
+      await interaction.editReply(adminCard("## 🚩 Report Updated\\nID: "+d.id+"\\nStatus: **"+d.status+"**"));
+      return;
+    }
+    if (name === "announcement") {
+      if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
+      await interaction.deferReply();
+      const d=await adminAction("announcement_create",{title:interaction.options.getString("title",true),body:interaction.options.getString("body",true),actor:interaction.user.id});
+      await interaction.editReply(adminCard("## 📢 Announcement Published\\nDocument ID: "+d.id));
+      return;
+    }
+    if (name === "game-setting") {
+      if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
+      await interaction.deferReply();
+      const d=await adminAction("game_update",{slug:interaction.options.getString("slug",true),title:interaction.options.getString("title",true),category:interaction.options.getString("category",true),description:interaction.options.getString("description",true),enabled:interaction.options.getBoolean("enabled",true),actor:interaction.user.id});
+      await interaction.editReply(adminCard("## 🎮 Game Listing Updated\\nSlug: "+d.slug+"\\nVisibility: **"+(d.enabled?"Visible":"Hidden")+"**"));
+      return;
+    }
+\n    if (name === "maintenance") {
       if (!isAdmin(interaction.user.id)) {
         await interaction.reply({ content: "Admin only.", flags: MessageFlags.Ephemeral });
         return;
