@@ -44,6 +44,7 @@ new SlashCommandBuilder().setName("player-search").setDescription("Find a player
   new SlashCommandBuilder().setName("currency").setDescription("Adjust player coins").addStringOption(o=>o.setName("uid").setDescription("Player UID").setRequired(true)).addStringOption(o=>o.setName("operation").setDescription("Operation").setRequired(true).addChoices({name:"Add",value:"add"},{name:"Remove",value:"remove"},{name:"Set",value:"set"})).addIntegerOption(o=>o.setName("amount").setDescription("Positive whole number").setRequired(true).setMinValue(1)).addStringOption(o=>o.setName("reason").setDescription("Audit reason").setRequired(true).setMaxLength(300)),
   new SlashCommandBuilder().setName("report-update").setDescription("Update a report").addStringOption(o=>o.setName("id").setDescription("Report ID").setRequired(true)).addStringOption(o=>o.setName("status").setDescription("New status").setRequired(true).addChoices({name:"Open",value:"open"},{name:"Resolved",value:"resolved"},{name:"Dismissed",value:"dismissed"},{name:"Closed",value:"closed"})),
   new SlashCommandBuilder().setName("announcement").setDescription("Publish a website announcement").addStringOption(o=>o.setName("title").setDescription("Title").setRequired(true).setMaxLength(120)).addStringOption(o=>o.setName("body").setDescription("Body").setRequired(true).setMaxLength(1500)),
+  new SlashCommandBuilder().setName("announcement-delete").setDescription("Delete a website announcement by ID").addStringOption(o=>o.setName("id").setDescription("Announcement document ID").setRequired(true)),
   new SlashCommandBuilder().setName("game-setting").setDescription("Change a game listing").addStringOption(o=>o.setName("slug").setDescription("Game slug").setRequired(true)).addStringOption(o=>o.setName("title").setDescription("Title").setRequired(true).setMaxLength(120)).addStringOption(o=>o.setName("category").setDescription("Category").setRequired(true).setMaxLength(60)).addStringOption(o=>o.setName("description").setDescription("Description").setRequired(true).setMaxLength(500)).addBooleanOption(o=>o.setName("enabled").setDescription("Visible on website").setRequired(true))
 ].map(c => c.toJSON());
 
@@ -275,7 +276,7 @@ client.on(Events.InteractionCreate, async interaction => {
       if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
       await interaction.deferReply();
       const d=await adminAction("player_search",{playerId:interaction.options.getString("player-id",true),actor:interaction.user.id}),p=d.player;
-      await interaction.editReply(adminCard("## 🔎 Player Profile\\nName: **"+p.displayName+"**\\nUsername: "+(p.username||"—")+"\\nPlayer ID: **"+d.playerId+"**\\nUID: "+p.uid+"\\nEmail: "+(p.email||"Not stored")+"\\nCoins: **"+p.currencyBalance+"**\\nStatus: **"+(p.banned?"BANNED":"Active")+"**\\nBan reason: "+(p.banReason||"—")));
+      await interaction.editReply(adminCard("## 🔎 Player Profile\\nName: **"+p.displayName+"**\\nUsername: "+(p.username||"—")+"\\nPlayer ID: **"+d.playerId+"**\\nUID: "+p.uid+"\\nCoins: **"+p.currencyBalance+"**\\nStatus: **"+(p.banned?"BANNED":"Active")+"**\\nBan reason: "+(p.banReason||"—")));
       return;
     }
     if (name === "admin-data") {
@@ -310,6 +311,13 @@ client.on(Events.InteractionCreate, async interaction => {
       await interaction.deferReply();
       const d=await adminAction("announcement_create",{title:interaction.options.getString("title",true),body:interaction.options.getString("body",true),actor:interaction.user.id});
       await interaction.editReply(adminCard("## 📢 Announcement Published\\nDocument ID: "+d.id));
+      return;
+    }
+    if (name === "announcement-delete") {
+      if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
+      await interaction.deferReply();
+      const d=await adminAction("announcement_delete",{id:interaction.options.getString("id",true),actor:interaction.user.id});
+      await interaction.editReply(adminCard("## 🗑️ Announcement Deleted\\nDocument ID: "+d.id,0xed4245));
       return;
     }
     if (name === "game-setting") {
