@@ -20,8 +20,12 @@ const guildMusic = new Map();
 const musicCommands = [
   new SlashCommandBuilder().setName("join").setDescription("Join your current voice channel"),
   new SlashCommandBuilder().setName("leave").setDescription("Leave the voice channel and clear the queue"),
-  new SlashCommandBuilder().setName("play").setDescription("Play a permitted direct audio stream URL")
+  new SlashCommandBuilder().setName("play").setDescription("Play a permitted direct HTTPS audio stream URL")
     .addStringOption(o => o.setName("url").setDescription("Direct HTTPS audio stream URL").setRequired(true)),
+  new SlashCommandBuilder().setName("youtube-search").setDescription("Search YouTube videos (video links only; no audio extraction)")
+    .addStringOption(o => o.setName("query").setDescription("Song or artist to search").setRequired(true)),
+  new SlashCommandBuilder().setName("jamendo-play").setDescription("Play a Creative Commons track from Jamendo")
+    .addStringOption(o => o.setName("query").setDescription("Track, artist, or genre").setRequired(true)),
   new SlashCommandBuilder().setName("pause").setDescription("Pause the current track"),
   new SlashCommandBuilder().setName("resume").setDescription("Resume the current track"),
   new SlashCommandBuilder().setName("skip").setDescription("Skip the current track"),
@@ -66,6 +70,41 @@ function safeAudioUrl(raw) {
     throw new Error("Private/local network URLs are not allowed.");
   }
   return u.toString();
+}
+
+async function searchYouTube(query) {
+  const key = process.env.YOUTUBE_API_KEY;
+  if (!key) throw new Error("YouTube search is not configured. Add YOUTUBE_API_KEY in Enzonic.");
+  const params = new URLSearchParams({
+    part: "snippet", type: "video", maxResults: "5", q: query, key
+  });
+  const response = await fetch("https://www.googleapis.com/youtube/v3/search?" + params, {
+    signal: AbortSignal.timeout(12000)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error?.message || "YouTube search failed.");
+  return (data.items || []).map(item => ({
+    title: item.snippet?.title || "YouTube video",
+    channel: item.snippet?.channelTitle || "YouTube",
+    url: "https://www.youtube.com/watch?v=" + item.id.videoId
+  }));
+}
+
+async function searchJamendo(query) {
+  const clientId = process.env.JAMENDO_CLIENT_ID;
+  if (!clientId) throw new Error("Jamendo playback is not configured. Add JAMENDO_CLIENT_ID in Enzonic.");
+  const params = new URLSearchParams({
+    client_id: clientId, format: "json", limit: "5", search: query,
+    audioformat: "mp31", include: "musicinfo"
+  });
+  const response = await fetch("https://api.jamendo.com/v3.0/tracks/?" + params, {
+    signal: AbortSignal.timeout(15000)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || data.headers?.status === "failed") {
+    throw new Error(data.headers?.error_message || "Jamendo track search failed.");
+  }
+  return (data.results || []).filter(track => track.audio && track.license_ccurl);
 }
 
 async function connectToMemberChannel(interaction, state) {
@@ -129,7 +168,7 @@ async function playNext(guildId) {
 async function handleMusicInteraction(interaction) {
   if (!interaction.isChatInputCommand()) return false;
   const name = interaction.commandName;
-  const musicNames = new Set(["join", "leave", "play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "volume"]);
+  const musicNames = new Set(["join", "leave", "play", "youtube-search", "jamendo-play", "pause", "resume", "skip", "stop", "queue", "nowplaying", "volume"]);
   if (!musicNames.has(name)) return false;
   if (!interaction.guildId) {
     await interaction.reply({ content: "Music commands only work inside a server.", ephemeral: false });
@@ -137,6 +176,37 @@ async function handleMusicInteraction(interaction) {
   }
 
   const state = stateFor(interaction.guildId);
+  if (name === "youtube-search") {
+    await interaction.deferReply();
+    const query = interaction.options.getString("query", true);
+    const results = await searchYouTube(query);
+    if (!results.length) {
+      await interaction.editReply("No YouTube results found.");
+      return true;
+    }
+    const embed = new EmbedBuilder().setColor(0xff0000).setTitle("YouTube search results")
+      .setDescription(results.map((item, i) => "**" + (i + 1) + ". " + item.title.slice(0, 180) + "**\n" + item.channel + " · <" + item.url + ">").join("\n\n") +
+        "\n\nYouTube links are for discovery only; YouTube audio extraction/playback is not enabled.");
+    await interaction.editReply({ embeds: [embed] });
+    return true;
+  }
+  if (name === "jamendo-play") {
+    await interaction.deferReply();
+    const query = interaction.options.getString("query", true);
+    const tracks = await searchJamendo(query);
+    if (!tracks.length) throw new Error("No playable Jamendo track found for that search.");
+    const track = tracks[0];
+    const url = safeAudioUrl(track.audio);
+    const channel = await connectToMemberChannel(interaction, state);
+    const license = track.license_ccurl || "Creative Commons";
+    state.queue.push({
+      url, title: track.name, artist: track.artist_name,
+      license, requestedBy: interaction.user.username
+    });
+    await playNext(interaction.guildId);
+    await interaction.editReply("🎶 Added Jamendo track: **" + track.name + "** by **" + track.artist_name + "**\nVoice channel: **" + channel.name + "**\nLicense: <" + license + ">\nSource: <" + (track.shareurl || "https://www.jamendo.com/") + ">");
+    return true;
+  }
   if (name === "join") {
     await interaction.deferReply();
     const channel = await connectToMemberChannel(interaction, state);
@@ -147,7 +217,7 @@ async function handleMusicInteraction(interaction) {
     await interaction.deferReply();
     const url = safeAudioUrl(interaction.options.getString("url", true));
     const channel = await connectToMemberChannel(interaction, state);
-    state.queue.push({ url, requestedBy: interaction.user.username });
+    state.queue.push({ url, title: url, requestedBy: interaction.user.username });
     await playNext(interaction.guildId);
     await interaction.editReply("🎶 Added to queue: <" + url + ">\nVoice channel: **" + channel.name + "**");
     return true;
@@ -191,16 +261,16 @@ async function handleMusicInteraction(interaction) {
     return true;
   }
   if (name === "queue") {
-    const lines = state.queue.slice(0, 10).map((t, i) => (i + 1) + ". <" + t.url + ">");
+    const lines = state.queue.slice(0, 10).map((t, i) => (i + 1) + ". **" + (t.title || t.url).slice(0, 160) + "**" + (t.artist ? " — " + t.artist : "") + " <" + t.url + ">");
     const embed = new EmbedBuilder().setColor(0x5865f2).setTitle("🎵 Music Queue")
-      .setDescription((state.current ? "**Now:** <" + state.current.url + ">\n\n" : "") +
+      .setDescription((state.current ? "**Now:** **" + (state.current.title || state.current.url).slice(0, 160) + "**" + (state.current.artist ? " — " + state.current.artist : "") + "\n\n" : "") +
         (lines.join("\n") || "Queue is empty.") +
         (state.queue.length > 10 ? "\n…and " + (state.queue.length - 10) + " more." : ""));
     await interaction.reply({ embeds: [embed], ephemeral: false });
     return true;
   }
   if (name === "nowplaying") {
-    await interaction.reply({ content: state.current ? "🎶 Now playing: <" + state.current.url + ">" : "Nothing is playing.", ephemeral: false });
+    await interaction.reply({ content: state.current ? "🎶 Now playing: **" + (state.current.title || state.current.url) + "**" + (state.current.artist ? " — " + state.current.artist : "") + "\n" + (state.current.license ? "License: <" + state.current.license + ">" : "<" + state.current.url + ">"), ephemeral: false });
     return true;
   }
   if (name === "volume") {
