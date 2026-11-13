@@ -57,6 +57,9 @@ function safeAudioUrl(raw) {
   try { u = new URL(raw); } catch { throw new Error("Please provide a valid direct audio URL."); }
   if (u.protocol !== "https:") throw new Error("Only HTTPS audio stream URLs are supported.");
   const host = u.hostname.toLowerCase();
+  if (host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be" || host.endsWith(".youtu.be")) {
+    throw new Error("YouTube links cannot be streamed here. Use a permitted direct HTTPS audio stream URL.");
+  }
   if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") ||
       /^(127\\.|10\\.|192\\.168\\.|169\\.254\\.|0\\.)/.test(host) ||
       /^172\\.(1[6-9]|2[0-9]|3[01])\\./.test(host) || host === "::1" || host.startsWith("[")) {
