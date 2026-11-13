@@ -56,7 +56,7 @@ const commands = [
     .setName("maintenance")
     .setDescription("Turn Playovia website maintenance mode on or off (admins only)")
     .addBooleanOption(option => option.setName("enabled").setDescription("Enable maintenance mode").setRequired(true))
-].map(command => command.toJSON());
+].map(command => typeof command.toJSON === "function" ? command.toJSON() : command);
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
