@@ -69,8 +69,16 @@ function safeAudioUrl(raw) {
 }
 
 async function connectToMemberChannel(interaction, state) {
-  const channel = interaction.member?.voice?.channel;
-  if (!channel) throw new Error("Pehle kisi voice channel mein join karo.");
+  // Resolve the member from the guild cache/API so voice state is not lost
+  // when Discord supplies a partial interaction member payload.
+  let member = interaction.member;
+  try {
+    member = await interaction.guild.members.fetch(interaction.user.id);
+  } catch (error) {
+    console.warn("Could not fetch invoking guild member:", error.message);
+  }
+  const channel = member?.voice?.channel || interaction.member?.voice?.channel;
+  if (!channel) throw new Error("Voice channel detect nahi hua. Bot ko server mein rehne do, phir /join dobara try karo.");
   if (!channel.joinable || !channel.speakable) throw new Error("Bot ko is voice channel mein Connect aur Speak permission chahiye.");
   if (!state.connection || state.connection.joinConfig.channelId !== channel.id) {
     if (state.connection) state.connection.destroy();
