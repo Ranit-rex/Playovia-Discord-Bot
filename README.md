@@ -1,15 +1,18 @@
 # Playovia Discord Bot
 
-Discord control interface for the Playovia website. The bot uses Discord Components V2 for its dashboard. Voice and music features have been removed.
+Discord Components V2 control interface for the Playovia website. Voice/music and game-playing controls are not included.
 
 ## Commands
-- `/panel` — Components V2 control center with Overview, Website Analytics, AI Operations and System Health.
-- `/status` — live backend status.
-- `/traffic` — website analytics (admins only).
-- `/ai-stats` — AI usage (admins only).
-- `/maintenance enabled:true|false` — website maintenance control (admins only).
-- `/admin-check` — check Discord admin allowlist.
-- `/ping` — bot health.
+- `/panel` — Overview, traffic, AI operations, system health, live analytics, players, reports, announcements, game listings and admin activity.
+- `/player-search player-id` — search a player by the 9-character Player ID.
+- `/admin-data section` — fetch analytics, users, reports, announcements, games or audit activity.
+- `/player-ban uid banned reason` — ban/unban a player.
+- `/currency uid operation amount reason` — add/remove/set player coins.
+- `/report-update id status` — update report status.
+- `/announcement title body` and `/announcement-delete id` — publish/delete website announcements.
+- `/game-setting slug title category description enabled` — update a game listing.
+- `/maintenance enabled` — maintenance toggle.
+- `/status`, `/traffic`, `/ai-stats`, `/admin-check`, `/ping`.
 
 ## Enzonic environment variables
 - `DISCORD_BOT_TOKEN`
@@ -19,7 +22,9 @@ Discord control interface for the Playovia website. The bot uses Discord Compone
 - `DISCORD_ADMIN_IDS` (comma-separated Discord user IDs)
 - Optional `DISCORD_GUILD_ID` for instant guild command registration.
 
-All provider keys stay on the Playovia backend. Do not commit secrets to GitHub.
+## Security
+Privileged actions require the Discord user ID allowlist and the private backend integration token. Firestore access uses Firebase Admin on Render; the service-account JSON must be stored only in Render as `FIREBASE_SERVICE_ACCOUNT_JSON`. Never commit service-account credentials, bot tokens, or provider keys.
 
-## Current backend scope
-The backend currently exposes Discord-authenticated overview and maintenance endpoints. Additional website administration features need dedicated Discord-authorized API endpoints before they can be safely surfaced in the bot. Current traffic and AI counters are in-memory and reset when the backend restarts.
+Player lookup intentionally omits contact details from Discord responses. Ban/currency/report/announcement/game changes are written to Firestore and recorded in `adminAuditLog`.
+
+Traffic and AI request counters are currently in-memory and reset when the backend restarts. Firestore analytics are queried live from available site collections; large counts are capped to a sample limit.
