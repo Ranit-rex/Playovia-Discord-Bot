@@ -276,7 +276,7 @@ client.on(Events.InteractionCreate, async interaction => {
       if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
       await interaction.deferReply();
       const d=await adminAction("player_search",{playerId:interaction.options.getString("player-id",true),actor:interaction.user.id}),p=d.player;
-      await interaction.editReply(adminCard("## 🔎 Player Profile\\nName: **"+p.displayName+"**\\nUsername: "+(p.username||"—")+"\\nPlayer ID: **"+d.playerId+"**\\nUID: "+p.uid+"\\nCoins: **"+p.currencyBalance+"**\\nStatus: **"+(p.banned?"BANNED":"Active")+"**\\nBan reason: "+(p.banReason||"—")));
+      await interaction.editReply(adminCard("## 🔎 Player Profile\nName: **"+p.displayName+"**\nUsername: "+(p.username||"—")+"\nPlayer ID: **"+d.playerId+"**\nUID: "+p.uid+"\nCoins: **"+p.currencyBalance+"**\nStatus: **"+(p.banned?"BANNED":"Active")+"**\nBan reason: "+(p.banReason||"—")));
       return;
     }
     if (name === "admin-data") {
@@ -289,42 +289,42 @@ client.on(Events.InteractionCreate, async interaction => {
       if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
       await interaction.deferReply();
       const banned=interaction.options.getBoolean("banned",true),d=await adminAction("set_ban",{uid:interaction.options.getString("uid",true),banned,reason:interaction.options.getString("reason")||"",actor:interaction.user.id});
-      await interaction.editReply(adminCard("## "+(banned?"🔒 Player Banned":"🔓 Player Unbanned")+"\\nUID: "+d.uid+"\\nStatus: **"+(d.banned?"BANNED":"ACTIVE")+"**",banned?0xed4245:0x57f287));
+      await interaction.editReply(adminCard("## "+(banned?"🔒 Player Banned":"🔓 Player Unbanned")+"\nUID: "+d.uid+"\nStatus: **"+(d.banned?"BANNED":"ACTIVE")+"**",banned?0xed4245:0x57f287));
       return;
     }
     if (name === "currency") {
       if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
       await interaction.deferReply();
       const d=await adminAction("currency",{uid:interaction.options.getString("uid",true),operation:interaction.options.getString("operation",true),amount:interaction.options.getInteger("amount",true),reason:interaction.options.getString("reason",true),actor:interaction.user.id});
-      await interaction.editReply(adminCard("## 🪙 Currency Updated\\nUID: "+d.uid+"\\nBalance: **"+d.before+" → "+d.after+"**"));
+      await interaction.editReply(adminCard("## 🪙 Currency Updated\nUID: "+d.uid+"\nBalance: **"+d.before+" → "+d.after+"**"));
       return;
     }
     if (name === "report-update") {
       if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
       await interaction.deferReply();
       const d=await adminAction("report_update",{id:interaction.options.getString("id",true),status:interaction.options.getString("status",true),actor:interaction.user.id});
-      await interaction.editReply(adminCard("## 🚩 Report Updated\\nID: "+d.id+"\\nStatus: **"+d.status+"**"));
+      await interaction.editReply(adminCard("## 🚩 Report Updated\nID: "+d.id+"\nStatus: **"+d.status+"**"));
       return;
     }
     if (name === "announcement") {
       if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
       await interaction.deferReply();
       const d=await adminAction("announcement_create",{title:interaction.options.getString("title",true),body:interaction.options.getString("body",true),actor:interaction.user.id});
-      await interaction.editReply(adminCard("## 📢 Announcement Published\\nDocument ID: "+d.id));
+      await interaction.editReply(adminCard("## 📢 Announcement Published\nDocument ID: "+d.id));
       return;
     }
     if (name === "announcement-delete") {
       if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
       await interaction.deferReply();
       const d=await adminAction("announcement_delete",{id:interaction.options.getString("id",true),actor:interaction.user.id});
-      await interaction.editReply(adminCard("## 🗑️ Announcement Deleted\\nDocument ID: "+d.id,0xed4245));
+      await interaction.editReply(adminCard("## 🗑️ Announcement Deleted\nDocument ID: "+d.id,0xed4245));
       return;
     }
     if (name === "game-setting") {
       if (!isAdmin(interaction.user.id)) { await interaction.reply({content:"Admin only.",flags:MessageFlags.Ephemeral}); return; }
       await interaction.deferReply();
       const d=await adminAction("game_update",{slug:interaction.options.getString("slug",true),title:interaction.options.getString("title",true),category:interaction.options.getString("category",true),description:interaction.options.getString("description",true),enabled:interaction.options.getBoolean("enabled",true),actor:interaction.user.id});
-      await interaction.editReply(adminCard("## 🎮 Game Listing Updated\\nSlug: "+d.slug+"\\nVisibility: **"+(d.enabled?"Visible":"Hidden")+"**"));
+      await interaction.editReply(adminCard("## 🎮 Game Listing Updated\nSlug: "+d.slug+"\nVisibility: **"+(d.enabled?"Visible":"Hidden")+"**"));
       return;
     }
 \n    if (name === "maintenance") {
