@@ -77,7 +77,11 @@ async function adminAction(action, payload = {}) {
   return data;
 }
 function adminCard(message, color = 0x7657ff) {
-  return { components: [new ContainerBuilder().setAccentColor(color).addTextDisplayComponents(text(message))], flags: V2 };
+  const container = new ContainerBuilder().setAccentColor(color).addTextDisplayComponents(text(message))
+    .addActionRowComponents(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("pv:v2:back").setLabel("Back to dashboard").setEmoji("↩️").setStyle(ButtonStyle.Secondary)
+    ));
+  return { components: [container], flags: V2 };
 }
 function adminList(title, rows, render) {
   return "## " + title + String.fromCharCode(10) + (rows && rows.length ? rows.map((x,i)=>(i+1)+". "+render(x)).join(String.fromCharCode(10)).slice(0,3800) : "No records found.");
