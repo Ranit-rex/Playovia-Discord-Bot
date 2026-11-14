@@ -292,11 +292,17 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
       }
       await interaction.deferReply();
-      const data = await getOverview();
-      let message;
+      let data;
       if (name === "status") {
-        message = `## 🟢 Playovia Live Status\n**Backend:** Online\n**Uptime:** ${Math.floor(data.uptimeSeconds || 0)} seconds\n**AI providers:** ${Object.entries(data.providersConfigured || {}).filter(([,v])=>v).map(([k])=>k).join(", ") || "None"}`;
-      } else if (name === "traffic") {
+        const response=await fetch(apiBase+"/api/site/status",{signal:AbortSignal.timeout(8000)});
+        data=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error("Website status unavailable.");
+        await interaction.reply({content:"🟢 **Playovia Website Online**\nMaintenance: "+(data.maintenanceMode?"🔒 ON":"🟢 OFF")+"\nhttps://ranit-rex.github.io/test-Gameonix/"});
+        return;
+      }
+      data = await getOverview();
+      let message;
+      if (name === "traffic") {
         const t = data.traffic || {};
         message = `## 📊 Website Traffic\n**Today:** ${t.todayPageviews || 0} pageviews\n**Unique sessions:** ${t.uniqueSessionsToday || 0}\n**All-time:** ${t.totalPageviews || 0}\n**Top pages:**\n${(t.topPages || []).map(p => `• ${p.path}: ${p.views}`).join("\n") || "No data"}`;
       } else {
