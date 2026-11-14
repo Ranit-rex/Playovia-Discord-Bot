@@ -40,7 +40,7 @@ const commands = [
   new SlashCommandBuilder().setName("poll").setDescription("Create a simple public poll").addStringOption(o=>o.setName("question").setDescription("Poll question").setRequired(true).setMaxLength(180)).addStringOption(o=>o.setName("options").setDescription("Options separated by | (2 to 5)").setRequired(true).setMaxLength(500))
 ].map(c => c.toJSON());
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 const isAdmin = id => adminIds.has(id);
 
 async function api(path, options = {}) {
