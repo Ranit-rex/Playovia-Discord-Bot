@@ -30,22 +30,14 @@ const integrationToken = process.env.PLAYOVIA_DISCORD_TOKEN || "";
 const V2 = MessageFlags.IsComponentsV2;
 
 const commands = [
-  new SlashCommandBuilder().setName("panel").setDescription("Open the Playovia control center"),
-  new SlashCommandBuilder().setName("ping").setDescription("Check whether Playovia Control is online"),
-  new SlashCommandBuilder().setName("status").setDescription("Check the live Playovia backend"),
-  new SlashCommandBuilder().setName("admin-check").setDescription("Check your Playovia admin access"),
-  new SlashCommandBuilder().setName("traffic").setDescription("View website traffic analytics (admins only)"),
-  new SlashCommandBuilder().setName("ai-stats").setDescription("View AI usage statistics (admins only)"),
-  new SlashCommandBuilder().setName("maintenance").setDescription("Set website maintenance mode (admins only)")
-    .addBooleanOption(o => o.setName("enabled").setDescription("Enable maintenance mode").setRequired(true)),
-new SlashCommandBuilder().setName("player-search").setDescription("Find a player by Playovia Player ID").addStringOption(o=>o.setName("player-id").setDescription("5 letters + 4 digits").setRequired(true).setMaxLength(9)),
-  new SlashCommandBuilder().setName("admin-data").setDescription("View Playovia website data").addStringOption(o=>o.setName("section").setDescription("Section").setRequired(true).addChoices({name:"Analytics",value:"analytics"},{name:"Players",value:"users"},{name:"Reports",value:"reports"},{name:"Announcements",value:"announcements"},{name:"Game listings",value:"games"},{name:"Admin activity",value:"activity"})),
-  new SlashCommandBuilder().setName("player-ban").setDescription("Ban or unban a player").addStringOption(o=>o.setName("uid").setDescription("Player UID").setRequired(true)).addBooleanOption(o=>o.setName("banned").setDescription("True to ban").setRequired(true)).addStringOption(o=>o.setName("reason").setDescription("Reason").setMaxLength(300)),
-  new SlashCommandBuilder().setName("currency").setDescription("Adjust player coins").addStringOption(o=>o.setName("uid").setDescription("Player ID (5 letters + 4 digits) or account UID").setRequired(true)).addStringOption(o=>o.setName("operation").setDescription("Operation").setRequired(true).addChoices({name:"Add",value:"add"},{name:"Remove",value:"remove"},{name:"Set",value:"set"})).addIntegerOption(o=>o.setName("amount").setDescription("Positive whole number").setRequired(true).setMinValue(1)).addStringOption(o=>o.setName("reason").setDescription("Audit reason").setRequired(true).setMaxLength(300)),
-  new SlashCommandBuilder().setName("report-update").setDescription("Update a report").addStringOption(o=>o.setName("id").setDescription("Report ID").setRequired(true)).addStringOption(o=>o.setName("status").setDescription("New status").setRequired(true).addChoices({name:"Open",value:"open"},{name:"Resolved",value:"resolved"},{name:"Dismissed",value:"dismissed"},{name:"Closed",value:"closed"})),
-  new SlashCommandBuilder().setName("announcement").setDescription("Publish a website announcement").addStringOption(o=>o.setName("title").setDescription("Title").setRequired(true).setMaxLength(120)).addStringOption(o=>o.setName("body").setDescription("Body").setRequired(true).setMaxLength(1500)),
-  new SlashCommandBuilder().setName("announcement-delete").setDescription("Delete a website announcement by ID").addStringOption(o=>o.setName("id").setDescription("Announcement document ID").setRequired(true)),
-  new SlashCommandBuilder().setName("game-setting").setDescription("Change a game listing").addStringOption(o=>o.setName("slug").setDescription("Game slug").setRequired(true)).addStringOption(o=>o.setName("title").setDescription("Title").setRequired(true).setMaxLength(120)).addStringOption(o=>o.setName("category").setDescription("Category").setRequired(true).setMaxLength(60)).addStringOption(o=>o.setName("description").setDescription("Description").setRequired(true).setMaxLength(500)).addBooleanOption(o=>o.setName("enabled").setDescription("Visible on website").setRequired(true))
+  new SlashCommandBuilder().setName("help").setDescription("Show public Playovia bot commands"),
+  new SlashCommandBuilder().setName("ping").setDescription("Check bot latency"),
+  new SlashCommandBuilder().setName("status").setDescription("Check Playovia website status"),
+  new SlashCommandBuilder().setName("website").setDescription("Get the Playovia website link"),
+  new SlashCommandBuilder().setName("serverinfo").setDescription("Show this Discord server's information"),
+  new SlashCommandBuilder().setName("userinfo").setDescription("Show a member's public profile").addUserOption(o=>o.setName("user").setDescription("Member to inspect")),
+  new SlashCommandBuilder().setName("avatar").setDescription("Show a member's avatar").addUserOption(o=>o.setName("user").setDescription("Member avatar")),
+  new SlashCommandBuilder().setName("poll").setDescription("Create a simple public poll").addStringOption(o=>o.setName("question").setDescription("Poll question").setRequired(true).setMaxLength(180)).addStringOption(o=>o.setName("options").setDescription("Options separated by | (2 to 5)").setRequired(true).setMaxLength(500))
 ].map(c => c.toJSON());
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
@@ -202,6 +194,41 @@ client.once(Events.ClientReady, ready => {
   ready.user.setActivity("Playovia", { type: ActivityType.Watching });
 });
 
+
+function prefixHelp(){return "Playovia Bot\nPublic: +help, +ping, +status, +website, +serverinfo, +userinfo [@user], +avatar [@user], +poll Question | Option 1 | Option 2\nAdmin (authorized IDs only): +admin-help";}
+function pipeParts(v){return String(v||"").split("|").map(x=>x.trim());}
+async function handlePrefix(message){
+ if(message.author.bot||!message.content.startsWith("+"))return;
+ const parts=message.content.slice(1).trim().split(/\s+/),cmd=(parts.shift()||"").toLowerCase(),raw=message.content.slice(1+cmd.length).trim();
+ if(!cmd)return;
+ const reply=content=>message.reply({content:String(content).slice(0,1900),allowedMentions:{repliedUser:false}});
+ if(cmd==="help"){await reply(prefixHelp());return;}
+ if(cmd==="ping"){await reply("🏓 Pong! "+Math.round(client.ws.ping)+"ms");return;}
+ if(cmd==="website"||cmd==="site"){await reply("🌐 Playovia: https://ranit-rex.github.io/test-Gameonix/");return;}
+ if(cmd==="status"){const r=await fetch(apiBase+"/api/site/status",{signal:AbortSignal.timeout(8000)}),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error("Website status unavailable (HTTP "+r.status+").");await reply("Playovia Website\nStatus: Online\nMaintenance: "+(d.maintenanceMode?"ON":"OFF")+"\nhttps://ranit-rex.github.io/test-Gameonix/");return;}
+ if(cmd==="serverinfo"){if(!message.guild){await reply("Use this in a server.");return;}await reply("**"+message.guild.name+"**\nMembers: "+message.guild.memberCount+"\nCreated: "+message.guild.createdAt.toDateString());return;}
+ if(cmd==="userinfo"||cmd==="avatar"){const u=message.mentions.users.first()||message.author;await reply(cmd==="avatar"?u.displayAvatarURL({size:1024}):"**"+u.tag+"**\nUser ID: "+u.id+"\nCreated: "+u.createdAt.toDateString()+"\n"+u.displayAvatarURL({size:512}));return;}
+ if(cmd==="poll"){const bits=pipeParts(raw),q=bits.shift(),opts=bits.filter(Boolean);if(!q||opts.length<2||opts.length>5){await reply("Usage: +poll Question | Option 1 | Option 2 (2–5 options).");return;}const marks=["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"],sent=await message.channel.send("📊 **"+q+"**\n"+opts.map((x,i)=>marks[i]+" "+x).join("\n"));for(let i=0;i<opts.length;i++)await sent.react(marks[i]);return;}
+ const adminCommands=new Set(["admin-help","panel","traffic","ai-stats","maintenance","player-search","admin-data","players","reports","announcements","games","activity","player-ban","currency","report-update","announce","announcement-delete","game-setting"]);
+ if(!adminCommands.has(cmd))return;
+ if(!isAdmin(message.author.id)){await reply("🔒 Admin access required.");return;}
+ const actor=message.author.id;
+ if(cmd==="admin-help"){await reply("🔐 PLAYOVIA ADMIN COMMANDS\n+panel · +traffic · +ai-stats · +maintenance on|off\n+player-search PLAYERID · +admin-data analytics|users|reports|announcements|games|activity\n+players · +reports · +announcements · +games · +activity\n+player-ban UID on|off [reason]\n+currency PLAYERID add|remove|set AMOUNT reason\n+report-update ID open|resolved|dismissed|closed\n+announce TITLE | BODY · +announcement-delete ID\n+game-setting SLUG | TITLE | CATEGORY | on|off | DESCRIPTION");return;}
+ if(cmd==="panel"){await message.channel.send(buildPanelPayload("overview",await getOverview()));return;}
+ if(cmd==="traffic"||cmd==="ai-stats"){const d=await getOverview(),t=d.traffic||{},a=d.ai||{};await reply(cmd==="traffic"?"📊 WEBSITE TRAFFIC\nToday: "+(t.todayPageviews||0)+" views\nUnique sessions: "+(t.uniqueSessionsToday||0)+"\nAll-time: "+(t.totalPageviews||0)+"\nTop pages: "+((t.topPages||[]).map(x=>x.path+" ("+x.views+")").join(", ")||"No data"):"🤖 AI USAGE\nTotal: "+(a.total||0)+"\nSuccess: "+(a.success||0)+"\nFailed: "+(a.failed||0)+"\nProviders: "+Object.entries(a.byProvider||{}).map(([k,v])=>k+": "+v).join(", "));return;}
+ if(cmd==="maintenance"){const mode=(parts[0]||"").toLowerCase();if(!["on","off"].includes(mode)){await reply("Usage: +maintenance on or +maintenance off");return;}const d=await api("/api/discord/maintenance",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:mode==="on"})});await reply("Website maintenance: "+(d.maintenanceMode?"ON":"OFF"));return;}
+ if(cmd==="player-search"){const d=await adminAction("player_search",{playerId:parts[0]||"",actor}),p=d.player;await reply("PLAYER PROFILE\n"+p.displayName+" · "+(p.username||"—")+"\nPlayer ID: "+d.playerId+"\nUID: "+p.uid+"\nCoins: "+p.currencyBalance+"\nStatus: "+(p.banned?"BANNED":"Active"));return;}
+ const sm={players:"users",reports:"reports",announcements:"announcements",games:"games",activity:"activity"};
+ if(sm[cmd]||cmd==="admin-data"){await reply(await adminSection(sm[cmd]||(parts[0]||"analytics").toLowerCase()));return;}
+ if(cmd==="player-ban"){const uid=parts[0],mode=(parts[1]||"").toLowerCase(),reason=parts.slice(2).join(" ");if(!uid||!["on","off","true","false"].includes(mode)){await reply("Usage: +player-ban UID on|off [reason]");return;}const d=await adminAction("set_ban",{uid,banned:["on","true"].includes(mode),reason,actor});await reply("Player "+(d.banned?"BANNED":"UNBANNED")+": "+d.uid);return;}
+ if(cmd==="currency"){const uid=parts[0],operation=(parts[1]||"").toLowerCase(),amount=Number(parts[2]),reason=parts.slice(3).join(" ");if(!uid||!["add","remove","set"].includes(operation)||!Number.isSafeInteger(amount)||amount<1||!reason){await reply("Usage: +currency PLAYERID add|remove|set AMOUNT reason");return;}const d=await adminAction("currency",{uid,operation,amount,reason,actor});await reply("Currency updated: "+d.before+" → "+d.after+" coins (UID "+d.uid+")");return;}
+ if(cmd==="report-update"){const d=await adminAction("report_update",{id:parts[0],status:(parts[1]||"").toLowerCase(),actor});await reply("Report "+d.id+" updated: "+d.status);return;}
+ if(cmd==="announce"){const [title,...body]=pipeParts(raw);if(!title||!body.join("|").trim()){await reply("Usage: +announce Title | Announcement body");return;}const d=await adminAction("announcement_create",{title,body:body.join(" | "),actor});await reply("Announcement published. ID: "+d.id);return;}
+ if(cmd==="announcement-delete"){const d=await adminAction("announcement_delete",{id:parts[0],actor});await reply("Announcement deleted: "+d.id);return;}
+ if(cmd==="game-setting"){const [slug,title,category,enabled,...description]=pipeParts(raw);if(!slug||!title||!category||!["on","off"].includes((enabled||"").toLowerCase())){await reply("Usage: +game-setting slug | title | category | on|off | description");return;}const d=await adminAction("game_update",{slug,title,category,enabled:enabled.toLowerCase()==="on",description:description.join(" | "),actor});await reply("Game listing updated: "+d.slug+" · "+(d.enabled?"Visible":"Hidden"));return;}
+}
+client.on(Events.MessageCreate,message=>handlePrefix(message).catch(async error=>{console.error("Prefix command failed:",error);await message.reply({content:"Playovia command failed: "+String(error.message||"Unknown error").slice(0,250),allowedMentions:{repliedUser:false}}).catch(()=>{});}));
+
 client.on(Events.InteractionCreate, async interaction => {
   try {
     if (interaction.isStringSelectMenu() && interaction.customId === "pv:v2:section") {
@@ -234,6 +261,11 @@ client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
     const name = interaction.commandName;
 
+    if (name === "help") { await interaction.reply({content:"Public: /ping /status /website /serverinfo /userinfo /avatar /poll. Admin controls use the + prefix and are restricted.",flags:MessageFlags.Ephemeral}); return; }
+    if (name === "website") { await interaction.reply({content:"🌐 Playovia: https://ranit-rex.github.io/test-Gameonix/"}); return; }
+    if (name === "serverinfo") { const g=interaction.guild; await interaction.reply({content:"**"+g.name+"**\nMembers: "+g.memberCount+"\nCreated: "+g.createdAt.toDateString()}); return; }
+    if (name === "userinfo" || name === "avatar") { const u=interaction.options.getUser("user")||interaction.user; await interaction.reply({content:name==="avatar"?u.displayAvatarURL({size:1024}):"**"+u.tag+"**\nUser ID: "+u.id+"\nCreated: "+u.createdAt.toDateString()+"\n"+u.displayAvatarURL({size:512})}); return; }
+    if (name === "poll") { const q=interaction.options.getString("question",true),opts=interaction.options.getString("options",true).split("|").map(x=>x.trim()).filter(Boolean); if(opts.length<2||opts.length>5){await interaction.reply({content:"Give 2 to 5 options separated by |.",flags:MessageFlags.Ephemeral});return;} const marks=["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"],sent=await interaction.reply({content:"📊 **"+q+"**\n"+opts.map((x,i)=>marks[i]+" "+x).join("\n"),fetchReply:true}); for(let i=0;i<opts.length;i++)await sent.react(marks[i]); return; }
     if (name === "ping") {
       await interaction.reply({ content: "🟢 Playovia Control is online.", flags: MessageFlags.Ephemeral });
       return;
