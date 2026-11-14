@@ -1,30 +1,38 @@
 # Playovia Discord Bot
 
-Discord Components V2 control interface for the Playovia website. Voice/music and game-playing controls are not included.
+Public community bot + restricted Playovia website admin controls.
 
-## Commands
-- `/panel` — Overview, traffic, AI operations, system health, live analytics, players, reports, announcements, game listings and admin activity.
-- `/player-search player-id` — search a player by the 9-character Player ID.
-- `/admin-data section` — fetch analytics, users, reports, announcements, games or audit activity.
-- `/player-ban uid banned reason` — ban/unban a player.
-- `/currency uid operation amount reason` — add/remove/set player coins.
-- `/report-update id status` — update report status.
-- `/announcement title body` and `/announcement-delete id` — publish/delete website announcements.
-- `/game-setting slug title category description enabled` — update a game listing.
-- `/maintenance enabled` — maintenance toggle.
-- `/status`, `/traffic`, `/ai-stats`, `/admin-check`, `/ping`.
+## Public commands
+Slash and prefix commands: `/help`, `/ping`, `/status`, `/website`, `/serverinfo`, `/userinfo`, `/avatar`, `/poll`.
+Prefix commands start with `+` (for example `+help`).
 
-## Enzonic environment variables
+## Admin-only prefix commands
+Only Discord user IDs listed in `DISCORD_ADMIN_IDS` can use these:
+- `+admin-help`, `+panel`
+- `+traffic`, `+ai-stats`, `+maintenance on|off`
+- `+player-search PLAYERID`, `+admin-data analytics|users|reports|announcements|games|activity`
+- `+players`, `+reports`, `+announcements`, `+games`, `+activity`
+- `+player-ban UID on|off [reason]`
+- `+currency PLAYERID add|remove|set AMOUNT reason`
+- `+report-update ID open|resolved|dismissed|closed`
+- `+announce TITLE | BODY`, `+announcement-delete ID`
+- `+game-setting SLUG | TITLE | CATEGORY | on|off | DESCRIPTION`
+
+Admin commands are intentionally not registered as public slash commands. Backend admin endpoints still require the integration token.
+
+## Required environment variables
 - `DISCORD_BOT_TOKEN`
 - `DISCORD_APPLICATION_ID`
-- `PLAYOVIA_API_URL` (defaults to `https://test-gameonix.onrender.com`)
-- `PLAYOVIA_DISCORD_TOKEN` (must exactly match Render `DISCORD_INTEGRATION_TOKEN`)
-- `DISCORD_ADMIN_IDS` (comma-separated Discord user IDs)
-- Optional `DISCORD_GUILD_ID` for instant guild command registration.
+- `PLAYOVIA_API_URL` (default: `https://test-gameonix.onrender.com`)
+- `PLAYOVIA_DISCORD_TOKEN` (must match Render `DISCORD_INTEGRATION_TOKEN`)
+- `DISCORD_ADMIN_IDS` (comma-separated Discord user IDs, not server IDs)
+- Optional: `DISCORD_GUILD_ID` for fast guild command registration
+- Optional: `PREFIX` is not needed; prefix is `+`
 
-## Security
-Privileged actions require the Discord user ID allowlist and the private backend integration token. Firestore access uses Firebase Admin on Render; the service-account JSON must be stored only in Render as `FIREBASE_SERVICE_ACCOUNT_JSON`. Never commit service-account credentials, bot tokens, or provider keys.
+## Important Discord setup
+1. Discord Developer Portal → Bot → Privileged Gateway Intents → enable **Message Content Intent**.
+2. Save changes and restart/redeploy the bot host.
+3. Add only trusted admin Discord user IDs to `DISCORD_ADMIN_IDS`.
+4. Keep all tokens in host environment variables. Never commit them.
 
-Player lookup intentionally omits contact details from Discord responses. Ban/currency/report/announcement/game changes are written to Firestore and recorded in `adminAuditLog`.
-
-Traffic and AI request counters are currently in-memory and reset when the backend restarts. Firestore analytics are queried live from available site collections; large counts are capped to a sample limit.
+Voice/music and game-playing commands are intentionally not included.
