@@ -81,6 +81,40 @@ async function restoreGameLogChannel() {
     }
   }
 }
+function buildGameSessionCard(session, elapsedSeconds, exitedAt = null) {
+  const event = session.event;
+  const startedAt = new Date(session.startedAt || event.at || Date.now());
+  const playing = !exitedAt;
+  const user = String(event.user || 'Guest').slice(0, 80);
+  const uid = String(event.userId || (event.loggedIn ? 'UID unavailable' : 'Guest session')).slice(0, 100);
+  const game = String(event.title || event.slug || 'Unknown game').slice(0, 100);
+  const status = playing ? '🟢 PLAYING NOW' : '⚪ SESSION ENDED';
+  const elapsed = formatDuration(elapsedSeconds);
+  const container = new ContainerBuilder()
+    .setAccentColor(playing ? 0x7c5cff : 0x64748b)
+    .addTextDisplayComponents(text('## 🎮 ' + user + '\\n' + status))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
+    .addTextDisplayComponents(text('### 🕹️ ' + game))
+    .addTextDisplayComponents(text(
+      '**👤 Player details**\\n' +
+      '- **Username:** ' + user + '\\n' +
+      '- **User ID:** `' + uid + '`\\n' +
+      '- **Account:** ' + (event.loggedIn ? 'Verified Playovia account' : 'Guest / not logged in') + '\\n' +
+      '- **Device:** ' + String(event.device || 'Unknown device').slice(0, 100)
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
+    .addTextDisplayComponents(text(
+      '**⏱️ Session timeline**\\n' +
+      '- **Started on:** ' + startedAt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + '\\n' +
+      '- **Playing from:** ' + startedAt.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }) + '\\n' +
+      '- **Played for:** **' + elapsed + (playing ? ' · LIVE' : '') + '**\\n' +
+      '- **Exited on:** ' + (exitedAt ? new Date(exitedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '— Still playing')
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
+    .addTextDisplayComponents(text('-# Playovia Game Activity · Session ' + String(event.sessionId || '—').slice(0, 24)));
+  return { components: [container], flags: V2 };
+}
+
 async function updateGameActivityLog() {
   if (!gameLogChannelId || gameActivityBusy || !client.isReady()) return;
   gameActivityBusy = true;
@@ -93,53 +127,39 @@ async function updateGameActivityLog() {
       seenGameEventIds.add(event.id);
       const key = String(event.sessionId || 'unknown') + ':' + String(event.slug || 'game');
       if (event.type === 'game_play') {
-        const startedAt = new Date(event.at || Date.now());
-        const stamp = startedAt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-        const username = String(event.user || 'Guest').slice(0, 80);
-        const userId = String(event.userId || 'Not available');
-        const details = [
-          '## 🎮 ' + username,
-          '**Started game** — ' + String(event.title || event.slug || 'Unknown game').slice(0, 100),
-          '',
-          '- **User ID:** ' + userId,
-          '- **Started on:** ' + stamp,
-          '- **Playing from:** ' + stamp,
-          '- **Exited on:** ⏳ Currently playing'
-        ].join('\n');
-        const card = new ContainerBuilder().setAccentColor(0x57f287)
-          .addTextDisplayComponents(text(details));
-        const sent = await channel.send({ components: [card], flags: V2 });
-        gamePlayMessages.set(key, sent.id);
+        const startedAt = new Date(event.at || Date.now()).getTime();
+        const session = { event, startedAt, messageId: '' };
+        const sent = await channel.send(buildGameSessionCard(session, 0));
+        session.messageId = sent.id;
+        gamePlayMessages.set(key, session);
       } else if (event.type === 'game_exit') {
-        const messageId = gamePlayMessages.get(key);
-        if (!messageId) continue;
-        const old = await channel.messages.fetch(messageId).catch(() => null);
-        if (old) {
-          const exitedAt = new Date(event.at || Date.now()).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-          const username = String(event.user || 'Guest').slice(0, 80);
-          const details = [
-            '## 🎮 ' + username,
-            '**Started game** — ' + String(event.title || event.slug || 'Unknown game').slice(0, 100),
-            '',
-            '- **User ID:** ' + String(event.userId || 'Not available'),
-            '- **Started on:** ' + new Date(event.at || Date.now() - (Number(event.durationSeconds) || 0) * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-            '- **Playing from:** ' + new Date(new Date(event.at || Date.now()).getTime() - (Number(event.durationSeconds) || 0) * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-            '- **Exited on:** ' + exitedAt
-          ].join('\n');
-          const card = new ContainerBuilder().setAccentColor(0x64748b)
-            .addTextDisplayComponents(text(details));
-          await old.edit({ components: [card], flags: V2 });
-        }
+        const session = gamePlayMessages.get(key);
+        if (!session) continue;
+        const exitedAt = event.at || new Date().toISOString();
+        const duration = Math.max(0, Number(event.durationSeconds) || Math.floor((new Date(exitedAt).getTime() - session.startedAt) / 1000));
+        const old = await channel.messages.fetch(session.messageId).catch(() => null);
+        if (old) await old.edit(buildGameSessionCard(session, duration, exitedAt));
         gamePlayMessages.delete(key);
       }
     }
+
+    // Refresh each active card with its live elapsed timer. Poll cadence is 15 seconds to respect Discord rate limits.
+    for (const player of (data.active || [])) {
+      const key = String(player.sessionId || 'unknown') + ':' + String(player.slug || 'game');
+      const session = gamePlayMessages.get(key);
+      if (!session) continue;
+      const elapsed = Math.max(0, Math.floor((Date.now() - session.startedAt) / 1000));
+      const old = await channel.messages.fetch(session.messageId).catch(() => null);
+      if (old) await old.edit(buildGameSessionCard(session, elapsed));
+    }
+
     const active = data.active || [];
     const lines = active.slice(0, 35).map((p, i) =>
-      (i + 1) + '. **' + (p.user || 'Guest') + '** — ' + (p.title || p.slug) + '\n   ' +
-      (p.loggedIn ? 'Logged in' : 'Guest') + ' · ' + (p.device || 'Unknown device') + ' · Playing for **' + formatDuration(p.elapsedSeconds) + '**'
+      (i + 1) + '. **' + (p.user || 'Guest') + '** — ' + (p.title || p.slug) + '\\n   ' +
+      (p.loggedIn ? 'Member' : 'Guest') + ' · ' + (p.device || 'Unknown device') + ' · **' + formatDuration(p.elapsedSeconds) + '**'
     );
     const dashboard = new ContainerBuilder().setAccentColor(0x57f287)
-      .addTextDisplayComponents(text('## 🟢 Playovia Live Games\n**LIVE ' + Number(data.livePlayers || 0) + '** players currently playing\n\n' + (lines.join('\n') || 'No active games right now.') + '\n\n-# Auto-updates every 15 seconds · Last update ' + new Date(data.generatedAt || Date.now()).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })));
+      .addTextDisplayComponents(text('## 🟢 Playovia Live Games\\n**LIVE ' + Number(data.livePlayers || 0) + '** players currently playing\\n\\n' + (lines.join('\\n') || 'No active games right now.') + '\\n\\n-# Auto-updates every 15 seconds · Last update ' + new Date(data.generatedAt || Date.now()).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })));
     if (gameLogMessageId) {
       const old = await channel.messages.fetch(gameLogMessageId).catch(() => null);
       if (old) { await old.edit({ components: [dashboard] }); return; }
