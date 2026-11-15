@@ -86,7 +86,8 @@ function buildGameSessionCard(session, elapsedSeconds, exitedAt = null) {
   const startedAt = new Date(session.startedAt || event.at || Date.now());
   const playing = !exitedAt;
   const user = String(event.user || 'Guest').slice(0, 80);
-  const playerId = String(event.playerId || (event.loggedIn ? 'Player ID unavailable' : 'Guest session')).slice(0, 9);
+  const rawPlayerId = String(event.playerId || '').trim().toUpperCase();
+  const playerId = /^[A-Z]{5}[0-9]{4}$/.test(rawPlayerId) ? rawPlayerId : (event.loggedIn ? 'Player ID not received' : 'Guest session');
   const game = String(event.title || event.slug || 'Unknown game').slice(0, 100);
   const status = playing ? '🟢 PLAYING NOW' : '⚪ SESSION ENDED';
   const elapsed = formatDuration(elapsedSeconds);
@@ -119,7 +120,8 @@ function buildGameSessionCard(session, elapsed, exitedAt = null) {
   const e = session.event, start = new Date(session.startedAt);
   const live = !exitedAt;
   const user = String(e.user || "Guest").slice(0,80);
-  const playerId = String(e.playerId || (e.loggedIn ? "Player ID unavailable" : "Guest session")).slice(0,9);
+  const rawPlayerId = String(e.playerId || '').trim().toUpperCase();
+  const playerId = /^[A-Z]{5}[0-9]{4}$/.test(rawPlayerId) ? rawPlayerId : (e.loggedIn ? "Player ID not received" : "Guest session");
   const card = new ContainerBuilder().setAccentColor(live ? 0x7657ff : 0x64748b)
     .addTextDisplayComponents(text("## 🎮 " + user + "\n" + (live ? "🟢 PLAYING NOW" : "⚪ SESSION ENDED")))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
