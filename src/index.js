@@ -123,7 +123,7 @@ async function updateGameActivityLog() {
             '',
             '- **User ID:** ' + String(event.userId || 'Not available'),
             '- **Started on:** ' + new Date(event.at || Date.now() - (Number(event.durationSeconds) || 0) * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-            '- **Playing from:** ' + formatDuration(event.durationSeconds),
+            '- **Playing from:** ' + new Date(new Date(event.at || Date.now()).getTime() - (Number(event.durationSeconds) || 0) * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
             '- **Exited on:** ' + exitedAt
           ].join('\n');
           const card = new ContainerBuilder().setAccentColor(0x64748b)
