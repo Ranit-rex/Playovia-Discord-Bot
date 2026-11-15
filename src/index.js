@@ -46,6 +46,12 @@ let gameLogChannelId = String(process.env.DISCORD_GAME_LOG_CHANNEL_ID || '').tri
 let gameLogMessageId = '';
 const seenGameEventIds = new Set();
 let gameActivityBusy = false;
+let gameActivityTimer = null;
+function startGameActivityPolling() {
+  if (gameActivityTimer) clearInterval(gameActivityTimer);
+  updateGameActivityLog();
+  gameActivityTimer = setInterval(updateGameActivityLog, 15000);
+}
 function formatDuration(seconds) {
   const s = Math.max(0, Number(seconds) || 0);
   const m = Math.floor(s / 60), r = s % 60;
@@ -266,7 +272,7 @@ async function updatePanel(interaction, section = "overview") {
 client.once(Events.ClientReady, ready => {
   console.log(`Playovia Control logged in as ${ready.user.tag}`);
   ready.user.setActivity("Playovia", { type: ActivityType.Watching });
-  restoreGameLogChannel().then(() => { if (gameLogChannelId) { updateGameActivityLog(); setInterval(updateGameActivityLog, 15000); } else console.warn('Game logs not configured. Use /setup-game-logs channel:#channel.'); }).catch(e => console.error('[Game log setup restore]', e.message));
+  restoreGameLogChannel().then(() => { if (gameLogChannelId) startGameActivityPolling(); else console.warn('Game logs not configured. Use /setup-game-logs channel:#channel.'); }).catch(e => console.error('[Game log setup restore]', e.message));
 });
 
 
@@ -355,7 +361,7 @@ client.on(Events.InteractionCreate, async interaction => {
       gameLogChannelId = channel.id;
       gameLogMessageId = "";
       await interaction.editReply("✅ Game activity logs configured in " + channel.toString() + ". The live dashboard will update every 15 seconds.");
-      updateGameActivityLog();
+      startGameActivityPolling();
       return;
     }
 
