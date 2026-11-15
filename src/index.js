@@ -41,6 +41,56 @@ const commands = [
 ].map(c => c.toJSON());
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+const gameLogChannelId = String(process.env.DISCORD_GAME_LOG_CHANNEL_ID || '').trim();
+let gameLogMessageId = '';
+const seenGameEventIds = new Set();
+let gameActivityBusy = false;
+function formatDuration(seconds) {
+  const s = Math.max(0, Number(seconds) || 0);
+  const m = Math.floor(s / 60), r = s % 60;
+  return m ? m + ' min ' + String(r).padStart(2, '0') + ' sec' : r + ' sec';
+}
+async function updateGameActivityLog() {
+  if (!gameLogChannelId || gameActivityBusy || !client.isReady()) return;
+  gameActivityBusy = true;
+  try {
+    const data = await api('/api/discord/game-activity');
+    const channel = await client.channels.fetch(gameLogChannelId);
+    if (!channel || !channel.isTextBased() || !channel.send) throw new Error('Game log channel is not a text channel or bot cannot access it.');
+    for (const event of (data.events || [])) {
+      if (seenGameEventIds.has(event.id)) continue;
+      seenGameEventIds.add(event.id);
+      const icon = event.type === 'game_open' ? '🎮' : event.type === 'game_play' ? '▶️' : '🚪';
+      const action = event.type === 'game_open' ? 'opened' : event.type === 'game_play' ? 'started playing' : 'exited';
+      const details = [
+        icon + ' **' + (event.user || 'Guest') + '** ' + action + ' **' + (event.title || event.slug) + '**',
+        'Account: ' + (event.loggedIn ? 'Logged in' : 'Guest / not logged in'),
+        'Device: ' + (event.device || 'Unknown'),
+        event.type === 'game_exit' ? 'Played for: ' + formatDuration(event.durationSeconds) : 'Time: ' + new Date(event.at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+      ].join('\n');
+      await channel.send({ components: [new ContainerBuilder().setAccentColor(event.type === 'game_exit' ? 0x64748b : 0x7657ff).addTextDisplayComponents(text('## Playovia Game Activity\n' + details))], flags: V2 });
+    }
+    const active = data.active || [];
+    const lines = active.slice(0, 35).map((p, i) =>
+      (i + 1) + '. **' + (p.user || 'Guest') + '** — ' + (p.title || p.slug) + '\n   ' +
+      (p.loggedIn ? 'Logged in' : 'Guest') + ' · ' + (p.device || 'Unknown device') + ' · Playing for **' + formatDuration(p.elapsedSeconds) + '**'
+    );
+    const dashboard = new ContainerBuilder().setAccentColor(0x57f287)
+      .addTextDisplayComponents(text('## 🟢 Playovia Live Games\n**LIVE ' + Number(data.livePlayers || 0) + '** players currently playing\n\n' + (lines.join('\n') || 'No active games right now.') + '\n\n-# Auto-updates every 15 seconds · Last update ' + new Date(data.generatedAt || Date.now()).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })));
+    if (gameLogMessageId) {
+      const old = await channel.messages.fetch(gameLogMessageId).catch(() => null);
+      if (old) { await old.edit({ components: [dashboard], flags: V2 }); return; }
+      gameLogMessageId = '';
+    }
+    const sent = await channel.send({ components: [dashboard], flags: V2 });
+    gameLogMessageId = sent.id;
+  } catch (error) {
+    console.error('[Game activity log]', error.message || error);
+  } finally {
+    gameActivityBusy = false;
+  }
+}
+
 const isAdmin = id => adminIds.has(id);
 
 async function api(path, options = {}) {
@@ -192,6 +242,8 @@ async function updatePanel(interaction, section = "overview") {
 client.once(Events.ClientReady, ready => {
   console.log(`Playovia Control logged in as ${ready.user.tag}`);
   ready.user.setActivity("Playovia", { type: ActivityType.Watching });
+  if (!gameLogChannelId) console.warn('DISCORD_GAME_LOG_CHANNEL_ID is not set; game activity logs are disabled.');
+  else { updateGameActivityLog(); setInterval(updateGameActivityLog, 15000); }
 });
 
 
