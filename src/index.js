@@ -79,7 +79,7 @@ async function updateGameActivityLog() {
       .addTextDisplayComponents(text('## 🟢 Playovia Live Games\n**LIVE ' + Number(data.livePlayers || 0) + '** players currently playing\n\n' + (lines.join('\n') || 'No active games right now.') + '\n\n-# Auto-updates every 15 seconds · Last update ' + new Date(data.generatedAt || Date.now()).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })));
     if (gameLogMessageId) {
       const old = await channel.messages.fetch(gameLogMessageId).catch(() => null);
-      if (old) { await old.edit({ components: [dashboard], flags: V2 }); return; }
+      if (old) { await old.edit({ components: [dashboard] }); return; }
       gameLogMessageId = '';
     }
     const sent = await channel.send({ components: [dashboard], flags: V2 });
