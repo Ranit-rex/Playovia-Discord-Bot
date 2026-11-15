@@ -32,6 +32,7 @@ const V2 = MessageFlags.IsComponentsV2;
 const commands = [
   new SlashCommandBuilder().setName("help").setDescription("Show public Playovia bot commands"),
   new SlashCommandBuilder().setName("ping").setDescription("Check bot latency"),
+  new SlashCommandBuilder().setName("setup-game-logs").setDescription("Set the channel for Playovia game activity logs").addChannelOption(o=>o.setName("channel").setDescription("Channel where game logs and live dashboard will appear").setRequired(true)),
   new SlashCommandBuilder().setName("status").setDescription("Check Playovia website status"),
   new SlashCommandBuilder().setName("website").setDescription("Get the Playovia website link"),
   new SlashCommandBuilder().setName("serverinfo").setDescription("Show this Discord server's information"),
@@ -41,7 +42,7 @@ const commands = [
 ].map(c => c.toJSON());
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
-const gameLogChannelId = String(process.env.DISCORD_GAME_LOG_CHANNEL_ID || '').trim();
+let gameLogChannelId = String(process.env.DISCORD_GAME_LOG_CHANNEL_ID || '').trim();
 let gameLogMessageId = '';
 const seenGameEventIds = new Set();
 let gameActivityBusy = false;
@@ -49,6 +50,20 @@ function formatDuration(seconds) {
   const s = Math.max(0, Number(seconds) || 0);
   const m = Math.floor(s / 60), r = s % 60;
   return m ? m + ' min ' + String(r).padStart(2, '0') + ' sec' : r + ' sec';
+}
+const GAME_LOG_CONFIG_PREFIX = "PLAYOVIA_GAME_LOG_CHANNEL_CONFIG:";
+async function restoreGameLogChannel() {
+  if (gameLogChannelId) return;
+  for (const guild of client.guilds.cache.values()) {
+    for (const [, channel] of guild.channels.cache) {
+      if (!channel.isTextBased() || !channel.messages?.fetchPins) continue;
+      try {
+        const pins = await channel.messages.fetchPins();
+        const marker = pins.find(m => m.author.id === client.user.id && m.content.startsWith(GAME_LOG_CONFIG_PREFIX + guild.id + ":"));
+        if (marker) { gameLogChannelId = marker.content.slice((GAME_LOG_CONFIG_PREFIX + guild.id + ":").length).trim(); return; }
+      } catch {}
+    }
+  }
 }
 async function updateGameActivityLog() {
   if (!gameLogChannelId || gameActivityBusy || !client.isReady()) return;
@@ -242,8 +257,7 @@ async function updatePanel(interaction, section = "overview") {
 client.once(Events.ClientReady, ready => {
   console.log(`Playovia Control logged in as ${ready.user.tag}`);
   ready.user.setActivity("Playovia", { type: ActivityType.Watching });
-  if (!gameLogChannelId) console.warn('DISCORD_GAME_LOG_CHANNEL_ID is not set; game activity logs are disabled.');
-  else { updateGameActivityLog(); setInterval(updateGameActivityLog, 15000); }
+  restoreGameLogChannel().then(() => { if (gameLogChannelId) { updateGameActivityLog(); setInterval(updateGameActivityLog, 15000); } else console.warn('Game logs not configured. Use /setup-game-logs channel:#channel.'); }).catch(e => console.error('[Game log setup restore]', e.message));
 });
 
 
@@ -312,6 +326,29 @@ client.on(Events.InteractionCreate, async interaction => {
 
     if (!interaction.isChatInputCommand()) return;
     const name = interaction.commandName;
+    if (name === "setup-game-logs") {
+      if (!isAdmin(interaction.user.id) && !interaction.memberPermissions?.has("ManageGuild")) {
+        await interaction.reply({ content: "Admin access required (bot admin or Manage Server).", flags: MessageFlags.Ephemeral });
+        return;
+      }
+      const channel = interaction.options.getChannel("channel", true);
+      if (!channel.isTextBased() || !channel.send || !channel.messages?.fetchPins) {
+        await interaction.reply({ content: "Please select a text channel where the bot can send messages and manage pins.", flags: MessageFlags.Ephemeral });
+        return;
+      }
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const marker = GAME_LOG_CONFIG_PREFIX + interaction.guildId + ":" + channel.id;
+      const pins = await channel.messages.fetchPins();
+      const existing = pins.find(m => m.author.id === client.user.id && m.content.startsWith(GAME_LOG_CONFIG_PREFIX + interaction.guildId + ":"));
+      if (existing) await existing.delete().catch(() => {});
+      const configMessage = await channel.send({ content: marker });
+      await configMessage.pin();
+      gameLogChannelId = channel.id;
+      gameLogMessageId = "";
+      await interaction.editReply("✅ Game activity logs configured in " + channel.toString() + ". The live dashboard will update every 15 seconds.");
+      updateGameActivityLog();
+      return;
+    }
 
     if (name === "help") { await interaction.reply({content:"Public: /ping /status /website /serverinfo /userinfo /avatar /poll. Admin controls use the + prefix and are restricted.",flags:MessageFlags.Ephemeral}); return; }
     if (name === "website") { await interaction.reply({content:"🌐 Playovia: https://ranit-rex.github.io/test-Gameonix/"}); return; }
