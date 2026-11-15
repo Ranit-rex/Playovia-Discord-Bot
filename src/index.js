@@ -45,6 +45,7 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBit
 let gameLogChannelId = String(process.env.DISCORD_GAME_LOG_CHANNEL_ID || '').trim();
 let gameLogMessageId = '';
 const seenGameEventIds = new Set();
+const gamePlayMessages = new Map();
 let gameActivityBusy = false;
 let gameActivityTimer = null;
 function startGameActivityPolling() {
@@ -90,15 +91,47 @@ async function updateGameActivityLog() {
     for (const event of (data.events || [])) {
       if (seenGameEventIds.has(event.id)) continue;
       seenGameEventIds.add(event.id);
-      const icon = event.type === 'game_open' ? '🎮' : event.type === 'game_play' ? '▶️' : '🚪';
-      const action = event.type === 'game_open' ? 'opened' : event.type === 'game_play' ? 'started playing' : 'exited';
-      const details = [
-        icon + ' **' + (event.user || 'Guest') + '** ' + action + ' **' + (event.title || event.slug) + '**',
-        'Account: ' + (event.loggedIn ? 'Logged in' : 'Guest / not logged in'),
-        'Device: ' + (event.device || 'Unknown'),
-        event.type === 'game_exit' ? 'Played for: ' + formatDuration(event.durationSeconds) : 'Time: ' + new Date(event.at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
-      ].join('\n');
-      await channel.send({ components: [new ContainerBuilder().setAccentColor(event.type === 'game_exit' ? 0x64748b : 0x7657ff).addTextDisplayComponents(text('## Playovia Game Activity\n' + details))], flags: V2 });
+      const key = String(event.sessionId || 'unknown') + ':' + String(event.slug || 'game');
+      if (event.type === 'game_play') {
+        const startedAt = new Date(event.at || Date.now());
+        const stamp = startedAt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+        const username = String(event.user || 'Guest').slice(0, 80);
+        const userId = String(event.userId || 'Not available');
+        const details = [
+          '## 🎮 ' + username,
+          '**Started game** — ' + String(event.title || event.slug || 'Unknown game').slice(0, 100),
+          '',
+          '- **User ID:** ' + userId,
+          '- **Started on:** ' + stamp,
+          '- **Playing from:** ' + stamp,
+          '- **Exited on:** ⏳ Currently playing'
+        ].join('\n');
+        const card = new ContainerBuilder().setAccentColor(0x57f287)
+          .addTextDisplayComponents(text(details));
+        const sent = await channel.send({ components: [card], flags: V2 });
+        gamePlayMessages.set(key, sent.id);
+      } else if (event.type === 'game_exit') {
+        const messageId = gamePlayMessages.get(key);
+        if (!messageId) continue;
+        const old = await channel.messages.fetch(messageId).catch(() => null);
+        if (old) {
+          const exitedAt = new Date(event.at || Date.now()).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+          const username = String(event.user || 'Guest').slice(0, 80);
+          const details = [
+            '## 🎮 ' + username,
+            '**Started game** — ' + String(event.title || event.slug || 'Unknown game').slice(0, 100),
+            '',
+            '- **User ID:** ' + String(event.userId || 'Not available'),
+            '- **Started on:** ' + new Date(event.at || Date.now() - (Number(event.durationSeconds) || 0) * 1000).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+            '- **Playing from:** ' + formatDuration(event.durationSeconds),
+            '- **Exited on:** ' + exitedAt
+          ].join('\n');
+          const card = new ContainerBuilder().setAccentColor(0x64748b)
+            .addTextDisplayComponents(text(details));
+          await old.edit({ components: [card], flags: V2 });
+        }
+        gamePlayMessages.delete(key);
+      }
     }
     const active = data.active || [];
     const lines = active.slice(0, 35).map((p, i) =>
