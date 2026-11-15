@@ -86,7 +86,7 @@ function buildGameSessionCard(session, elapsedSeconds, exitedAt = null) {
   const startedAt = new Date(session.startedAt || event.at || Date.now());
   const playing = !exitedAt;
   const user = String(event.user || 'Guest').slice(0, 80);
-  const uid = String(event.userId || (event.loggedIn ? 'UID unavailable' : 'Guest session')).slice(0, 100);
+  const playerId = String(event.playerId || (event.loggedIn ? 'Player ID unavailable' : 'Guest session')).slice(0, 9);
   const game = String(event.title || event.slug || 'Unknown game').slice(0, 100);
   const status = playing ? '🟢 PLAYING NOW' : '⚪ SESSION ENDED';
   const elapsed = formatDuration(elapsedSeconds);
@@ -98,7 +98,7 @@ function buildGameSessionCard(session, elapsedSeconds, exitedAt = null) {
     .addTextDisplayComponents(text(
       '**👤 Player details**\\n' +
       '- **Username:** ' + user + '\\n' +
-      '- **User ID:** `' + uid + '`\\n' +
+      '- **Player ID:** `' + playerId + '`\\n' +
       '- **Account:** ' + (event.loggedIn ? 'Verified Playovia account' : 'Guest / not logged in') + '\\n' +
       '- **Device:** ' + String(event.device || 'Unknown device').slice(0, 100)
     ))
@@ -119,12 +119,12 @@ function buildGameSessionCard(session, elapsed, exitedAt = null) {
   const e = session.event, start = new Date(session.startedAt);
   const live = !exitedAt;
   const user = String(e.user || "Guest").slice(0,80);
-  const uid = String(e.userId || (e.loggedIn ? "UID unavailable" : "Guest session")).slice(0,100);
+  const playerId = String(e.playerId || (e.loggedIn ? "Player ID unavailable" : "Guest session")).slice(0,9);
   const card = new ContainerBuilder().setAccentColor(live ? 0x7657ff : 0x64748b)
     .addTextDisplayComponents(text("## 🎮 " + user + "\n" + (live ? "🟢 PLAYING NOW" : "⚪ SESSION ENDED")))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
     .addTextDisplayComponents(text("### 🕹️ " + String(e.title || e.slug || "Unknown game").slice(0,100)))
-    .addTextDisplayComponents(text("**👤 PLAYER DETAILS**\n- **Username:** " + user + "\n- **User ID:** `" + uid + "`\n- **Account:** " + (e.loggedIn ? "Playovia member" : "Guest") + "\n- **Device:** " + String(e.device || "Unknown").slice(0,100)))
+    .addTextDisplayComponents(text("**👤 PLAYER DETAILS**\n- **Username:** " + user + "\n- **Player ID:** `" + playerId + "`\n- **Account:** " + (e.loggedIn ? "Playovia member" : "Guest") + "\n- **Device:** " + String(e.device || "Unknown").slice(0,100)))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
     .addTextDisplayComponents(text("**⏱️ SESSION TIMELINE**\n- **Started on:** " + start.toLocaleString("en-IN",{timeZone:"Asia/Kolkata"}) + "\n- **Playing from:** " + start.toLocaleTimeString("en-IN",{timeZone:"Asia/Kolkata"}) + "\n- **Played for:** **" + formatDuration(elapsed) + (live ? " · LIVE" : "") + "**\n- **Exited on:** " + (exitedAt ? new Date(exitedAt).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"}) : "Still playing")))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
