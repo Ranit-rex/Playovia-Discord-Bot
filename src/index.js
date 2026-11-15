@@ -32,7 +32,7 @@ const V2 = MessageFlags.IsComponentsV2;
 const commands = [
   new SlashCommandBuilder().setName("help").setDescription("Show public Playovia bot commands"),
   new SlashCommandBuilder().setName("ping").setDescription("Check bot latency"),
-  new SlashCommandBuilder().setName("setup-game-logs").setDescription("Set the channel for Playovia game activity logs").addChannelOption(o=>o.setName("channel").setDescription("Channel where game logs and live dashboard will appear").setRequired(true)),
+  new SlashCommandBuilder().setName("setup-game-logs").setDescription("Set the channel for individual Playovia game session logs").addChannelOption(o=>o.setName("channel").setDescription("Channel where individual game session logs will appear").setRequired(true)),
   new SlashCommandBuilder().setName("status").setDescription("Check Playovia website status"),
   new SlashCommandBuilder().setName("website").setDescription("Get the Playovia website link"),
   new SlashCommandBuilder().setName("serverinfo").setDescription("Show this Discord server's information"),
@@ -138,6 +138,8 @@ async function updateGameActivityLog() {
     const data = await api("/api/discord/game-activity");
     const channel = await client.channels.fetch(gameLogChannelId);
     if (!channel || !channel.isTextBased() || !channel.send) throw new Error("Game log channel unavailable.");
+    const liveChannel = await client.channels.fetch("1571421720966074378");
+    if (!liveChannel || !liveChannel.isTextBased() || !liveChannel.send) throw new Error("Live games channel unavailable.");
     for (const event of (data.events || [])) {
       if (seenGameEventIds.has(event.id)) continue;
       seenGameEventIds.add(event.id);
@@ -170,11 +172,11 @@ async function updateGameActivityLog() {
     const dashboard = new ContainerBuilder().setAccentColor(0x57f287)
       .addTextDisplayComponents(text("## 🟢 Playovia Live Games\n**LIVE "+Number(data.livePlayers||0)+"** players currently playing\n\n"+(lines.join("\n")||"No active games right now.")+"\n\n-# Auto-updates every 15 seconds · "+new Date(data.generatedAt||Date.now()).toLocaleTimeString("en-IN",{timeZone:"Asia/Kolkata"})));
     if (gameLogMessageId) {
-      const old = await channel.messages.fetch(gameLogMessageId).catch(()=>null);
+      const old = await liveChannel.messages.fetch(gameLogMessageId).catch(()=>null);
       if (old) { await old.edit({components:[dashboard]}); return; }
       gameLogMessageId = "";
     }
-    const sent = await channel.send({components:[dashboard],flags:V2});
+    const sent = await liveChannel.send({components:[dashboard],flags:V2});
     gameLogMessageId = sent.id;
   } catch (error) {
     console.error("[Game activity log]",error.message||error);
@@ -420,7 +422,7 @@ client.on(Events.InteractionCreate, async interaction => {
       await configMessage.pin();
       gameLogChannelId = channel.id;
       gameLogMessageId = "";
-      await interaction.editReply("✅ Game activity logs configured in " + channel.toString() + ". The live dashboard will update every 15 seconds.");
+      await interaction.editReply("✅ Individual game logs will stay in " + channel.toString() + ". The live games dashboard is configured separately.");
       startGameActivityPolling();
       return;
     }
