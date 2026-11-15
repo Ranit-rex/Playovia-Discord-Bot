@@ -126,7 +126,7 @@ function buildGameSessionCard(session, elapsed, exitedAt = null) {
     .addTextDisplayComponents(text("## 🎮 " + user + "\n" + (live ? "🟢 PLAYING NOW" : "⚪ SESSION ENDED")))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
     .addTextDisplayComponents(text("### 🕹️ " + String(e.title || e.slug || "Unknown game").slice(0,100)))
-    .addTextDisplayComponents(text("**👤 PLAYER DETAILS**\n- **Username:** " + user + "\n- **Player ID:** `" + playerId + "`\n- **Account:** " + (e.loggedIn ? "Playovia member" : "Guest") + "\n- **Device:** " + String(e.device || "Unknown").slice(0,100)))
+    .addTextDisplayComponents(text("**👤 PLAYER DETAILS**\n- **Username:** " + user + "\n- **Player ID:** `" + playerId + "`\n- **Account:** " + (e.loggedIn ? "Playovia member" : "Guest") + "\n- **Device:** " + String(e.device || "Unknown").slice(0,100) + "\\n- **Device Model:** " + String(e.deviceModel || "Model unavailable").slice(0,80) + "\\n- **Device ID:** \`" + String(e.deviceId || "Unavailable").slice(0,32) + "\`"))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
     .addTextDisplayComponents(text("**⏱️ SESSION TIMELINE**\n- **Started on:** " + start.toLocaleString("en-IN",{timeZone:"Asia/Kolkata"}) + "\n- **Playing from:** " + start.toLocaleTimeString("en-IN",{timeZone:"Asia/Kolkata"}) + "\n- **Played for:** **" + formatDuration(elapsed) + (live ? " · LIVE" : "") + "**\n- **Exited on:** " + (exitedAt ? new Date(exitedAt).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"}) : "Still playing")))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
@@ -170,6 +170,8 @@ async function updateGameActivityLog() {
       if (player.playerId && /^[A-Z]{5}[0-9]{4}$/.test(String(player.playerId).trim().toUpperCase())) session.event.playerId = String(player.playerId).trim().toUpperCase();
       if (player.loggedIn) session.event.loggedIn = true;
       if (player.user && (!session.event.user || session.event.user === 'Guest')) session.event.user = player.user;
+      if (player.deviceModel) session.event.deviceModel = player.deviceModel;
+      if (player.deviceId) session.event.deviceId = player.deviceId;
       const old = await channel.messages.fetch(session.messageId).catch(()=>null);
       if (old) await old.edit(buildGameSessionCard(session,elapsed));
     }
