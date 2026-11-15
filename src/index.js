@@ -115,63 +115,70 @@ function buildGameSessionCard(session, elapsedSeconds, exitedAt = null) {
   return { components: [container], flags: V2 };
 }
 
+function buildGameSessionCard(session, elapsed, exitedAt = null) {
+  const e = session.event, start = new Date(session.startedAt);
+  const live = !exitedAt;
+  const user = String(e.user || "Guest").slice(0,80);
+  const uid = String(e.userId || (e.loggedIn ? "UID unavailable" : "Guest session")).slice(0,100);
+  const card = new ContainerBuilder().setAccentColor(live ? 0x7657ff : 0x64748b)
+    .addTextDisplayComponents(text("## 🎮 " + user + "\n" + (live ? "🟢 PLAYING NOW" : "⚪ SESSION ENDED")))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
+    .addTextDisplayComponents(text("### 🕹️ " + String(e.title || e.slug || "Unknown game").slice(0,100)))
+    .addTextDisplayComponents(text("**👤 PLAYER DETAILS**\n- **Username:** " + user + "\n- **User ID:** `" + uid + "`\n- **Account:** " + (e.loggedIn ? "Playovia member" : "Guest") + "\n- **Device:** " + String(e.device || "Unknown").slice(0,100)))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
+    .addTextDisplayComponents(text("**⏱️ SESSION TIMELINE**\n- **Started on:** " + start.toLocaleString("en-IN",{timeZone:"Asia/Kolkata"}) + "\n- **Playing from:** " + start.toLocaleTimeString("en-IN",{timeZone:"Asia/Kolkata"}) + "\n- **Played for:** **" + formatDuration(elapsed) + (live ? " · LIVE" : "") + "**\n- **Exited on:** " + (exitedAt ? new Date(exitedAt).toLocaleString("en-IN",{timeZone:"Asia/Kolkata"}) : "Still playing")))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
+    .addTextDisplayComponents(text("-# Playovia Activity · Session " + String(e.sessionId || "—").slice(0,24)));
+  return {components:[card],flags:V2};
+}
 async function updateGameActivityLog() {
   if (!gameLogChannelId || gameActivityBusy || !client.isReady()) return;
   gameActivityBusy = true;
   try {
-    const data = await api('/api/discord/game-activity');
+    const data = await api("/api/discord/game-activity");
     const channel = await client.channels.fetch(gameLogChannelId);
-    if (!channel || !channel.isTextBased() || !channel.send) throw new Error('Game log channel is not a text channel or bot cannot access it.');
+    if (!channel || !channel.isTextBased() || !channel.send) throw new Error("Game log channel unavailable.");
     for (const event of (data.events || [])) {
       if (seenGameEventIds.has(event.id)) continue;
       seenGameEventIds.add(event.id);
-      const key = String(event.sessionId || 'unknown') + ':' + String(event.slug || 'game');
-      if (event.type === 'game_play') {
-        const startedAt = new Date(event.at || Date.now()).getTime();
-        const session = { event, startedAt, messageId: '' };
-        const sent = await channel.send(buildGameSessionCard(session, 0));
+      const key = String(event.sessionId || "unknown") + ":" + String(event.slug || "game");
+      if (event.type === "game_play") {
+        const session = {event,startedAt:new Date(event.at || Date.now()).getTime(),messageId:""};
+        const sent = await channel.send(buildGameSessionCard(session,0));
         session.messageId = sent.id;
-        gamePlayMessages.set(key, session);
-      } else if (event.type === 'game_exit') {
+        gamePlayMessages.set(key,session);
+      } else if (event.type === "game_exit") {
         const session = gamePlayMessages.get(key);
         if (!session) continue;
         const exitedAt = event.at || new Date().toISOString();
-        const duration = Math.max(0, Number(event.durationSeconds) || Math.floor((new Date(exitedAt).getTime() - session.startedAt) / 1000));
-        const old = await channel.messages.fetch(session.messageId).catch(() => null);
-        if (old) await old.edit(buildGameSessionCard(session, duration, exitedAt));
+        const elapsed = Math.max(0,Number(event.durationSeconds)||Math.floor((new Date(exitedAt).getTime()-session.startedAt)/1000));
+        const old = await channel.messages.fetch(session.messageId).catch(()=>null);
+        if (old) await old.edit(buildGameSessionCard(session,elapsed,exitedAt));
         gamePlayMessages.delete(key);
       }
     }
-
-    // Refresh each active card with its live elapsed timer. Poll cadence is 15 seconds to respect Discord rate limits.
     for (const player of (data.active || [])) {
-      const key = String(player.sessionId || 'unknown') + ':' + String(player.slug || 'game');
+      const key = String(player.sessionId || "unknown") + ":" + String(player.slug || "game");
       const session = gamePlayMessages.get(key);
       if (!session) continue;
-      const elapsed = Math.max(0, Math.floor((Date.now() - session.startedAt) / 1000));
-      const old = await channel.messages.fetch(session.messageId).catch(() => null);
-      if (old) await old.edit(buildGameSessionCard(session, elapsed));
+      const elapsed = Math.max(0,Math.floor((Date.now()-session.startedAt)/1000));
+      const old = await channel.messages.fetch(session.messageId).catch(()=>null);
+      if (old) await old.edit(buildGameSessionCard(session,elapsed));
     }
-
     const active = data.active || [];
-    const lines = active.slice(0, 35).map((p, i) =>
-      (i + 1) + '. **' + (p.user || 'Guest') + '** — ' + (p.title || p.slug) + '\\n   ' +
-      (p.loggedIn ? 'Member' : 'Guest') + ' · ' + (p.device || 'Unknown device') + ' · **' + formatDuration(p.elapsedSeconds) + '**'
-    );
+    const lines = active.slice(0,35).map((p,i)=>(i+1)+". **"+(p.user||"Guest")+"** — "+(p.title||p.slug)+"\n   "+(p.loggedIn?"Member":"Guest")+" · "+(p.device||"Unknown device")+" · **"+formatDuration(p.elapsedSeconds)+"**");
     const dashboard = new ContainerBuilder().setAccentColor(0x57f287)
-      .addTextDisplayComponents(text('## 🟢 Playovia Live Games\\n**LIVE ' + Number(data.livePlayers || 0) + '** players currently playing\\n\\n' + (lines.join('\\n') || 'No active games right now.') + '\\n\\n-# Auto-updates every 15 seconds · Last update ' + new Date(data.generatedAt || Date.now()).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })));
+      .addTextDisplayComponents(text("## 🟢 Playovia Live Games\n**LIVE "+Number(data.livePlayers||0)+"** players currently playing\n\n"+(lines.join("\n")||"No active games right now.")+"\n\n-# Auto-updates every 15 seconds · "+new Date(data.generatedAt||Date.now()).toLocaleTimeString("en-IN",{timeZone:"Asia/Kolkata"})));
     if (gameLogMessageId) {
-      const old = await channel.messages.fetch(gameLogMessageId).catch(() => null);
-      if (old) { await old.edit({ components: [dashboard] }); return; }
-      gameLogMessageId = '';
+      const old = await channel.messages.fetch(gameLogMessageId).catch(()=>null);
+      if (old) { await old.edit({components:[dashboard]}); return; }
+      gameLogMessageId = "";
     }
-    const sent = await channel.send({ components: [dashboard], flags: V2 });
+    const sent = await channel.send({components:[dashboard],flags:V2});
     gameLogMessageId = sent.id;
   } catch (error) {
-    console.error('[Game activity log]', error.message || error);
-  } finally {
-    gameActivityBusy = false;
-  }
+    console.error("[Game activity log]",error.message||error);
+  } finally { gameActivityBusy = false; }
 }
 
 const isAdmin = id => adminIds.has(id);
