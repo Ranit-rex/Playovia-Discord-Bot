@@ -52,14 +52,23 @@ function formatDuration(seconds) {
   return m ? m + ' min ' + String(r).padStart(2, '0') + ' sec' : r + ' sec';
 }
 const GAME_LOG_CONFIG_PREFIX = "PLAYOVIA_GAME_LOG_CHANNEL_CONFIG:";
+function normalizeMessages(result) {
+  if (Array.isArray(result)) return result;
+  if (result && typeof result.values === "function") return Array.from(result.values());
+  if (result?.items && typeof result.items.values === "function") return Array.from(result.items.values());
+  if (Array.isArray(result?.items)) return result.items;
+  if (result?.messages && typeof result.messages.values === "function") return Array.from(result.messages.values());
+  return [];
+}
+
 async function restoreGameLogChannel() {
   if (gameLogChannelId) return;
   for (const guild of client.guilds.cache.values()) {
     for (const [, channel] of guild.channels.cache) {
       if (!channel.isTextBased() || !channel.messages?.fetchPins) continue;
       try {
-        const pins = await channel.messages.fetchPins();
-        const marker = pins.find(m => m.author.id === client.user.id && m.content.startsWith(GAME_LOG_CONFIG_PREFIX + guild.id + ":"));
+        const pins = normalizeMessages(await channel.messages.fetchPins());
+        const marker = pins.find(m => m.author?.id === client.user.id && String(m.content || '').startsWith(GAME_LOG_CONFIG_PREFIX + guild.id + ":"));
         if (marker) { gameLogChannelId = marker.content.slice((GAME_LOG_CONFIG_PREFIX + guild.id + ":").length).trim(); return; }
       } catch {}
     }
@@ -338,8 +347,8 @@ client.on(Events.InteractionCreate, async interaction => {
       }
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       const marker = GAME_LOG_CONFIG_PREFIX + interaction.guildId + ":" + channel.id;
-      const pins = await channel.messages.fetchPins();
-      const existing = pins.find(m => m.author.id === client.user.id && m.content.startsWith(GAME_LOG_CONFIG_PREFIX + interaction.guildId + ":"));
+      const pins = normalizeMessages(await channel.messages.fetchPins());
+      const existing = pins.find(m => m.author?.id === client.user.id && String(m.content || '').startsWith(GAME_LOG_CONFIG_PREFIX + interaction.guildId + ":"));
       if (existing) await existing.delete().catch(() => {});
       const configMessage = await channel.send({ content: marker });
       await configMessage.pin();
