@@ -166,6 +166,10 @@ async function updateGameActivityLog() {
       const session = gamePlayMessages.get(key);
       if (!session) continue;
       const elapsed = Math.max(0,Math.floor((Date.now()-session.startedAt)/1000));
+      // The first game_play event can arrive before the profile ID is ready; hydrate the card from later heartbeat data.
+      if (player.playerId && /^[A-Z]{5}[0-9]{4}$/.test(String(player.playerId).trim().toUpperCase())) session.event.playerId = String(player.playerId).trim().toUpperCase();
+      if (player.loggedIn) session.event.loggedIn = true;
+      if (player.user && (!session.event.user || session.event.user === 'Guest')) session.event.user = player.user;
       const old = await channel.messages.fetch(session.messageId).catch(()=>null);
       if (old) await old.edit(buildGameSessionCard(session,elapsed));
     }
