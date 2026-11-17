@@ -242,8 +242,8 @@ function formatAdcashReport(data) {
   const details = rows.slice(0, 8).map(row => "• **" + String(row.site || row.zone || row.country || "Site").slice(0, 60) + "** — " + money(row.earnings) + " · " + number(row.imps) + " imps · " + number(row.clicks) + " clicks").join("\n") || "No report rows returned.";
   return "## 💰 Adcash Publisher Report\n**Period:** " + data.period.start_date + " → " + data.period.end_date +
     "\n**Account balance:** " + (data.balance ? money(data.balance.balance) : "Unavailable") +
-    "\n**Earnings:** " + money(earnings) + " · **Impressions:** " + number(imps) +
-    "\n**Clicks:** " + number(clicks) + " · **Average eCPM:** " + money(ecpm) +
+    "\n**Returned-row earnings:** " + money(earnings) + " · **Impressions:** " + number(imps) +
+    "\n**Clicks:** " + number(clicks) + " · **Average eCPM (returned rows):** " + money(ecpm) +
     "\n\n### Site breakdown\n" + details +
     (data.balanceError ? "\n\nBalance: " + data.balanceError : "") +
     "\n\n-# Currency: " + currency + " · Grouped row totals";
