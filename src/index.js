@@ -210,6 +210,45 @@ async function getOverview() {
   return api("/api/discord/overview");
 }
 
+function adcashDate(value) { return value.toISOString().slice(0, 10); }
+function adcashRangeDates(range = "7d") {
+  const end = new Date();
+  const start = new Date(end);
+  if (range === "yesterday") {
+    start.setUTCDate(start.getUTCDate() - 1);
+    end.setTime(start.getTime());
+  } else if (range === "today") {
+    // Same calendar date for both bounds.
+  } else {
+    const days = range === "30d" ? 30 : 7;
+    start.setUTCDate(start.getUTCDate() - (days - 1));
+  }
+  return { start_date: adcashDate(start), end_date: adcashDate(end) };
+}
+async function getAdcashReport(range = "7d") {
+  if (!["today","yesterday","7d","30d"].includes(range)) throw new Error("Use +adcash today|yesterday|7d|30d.");
+  const dates = adcashRangeDates(range);
+  const query = new URLSearchParams({ ...dates, group_by: "site", sort_by: "-earnings" });
+  return api("/api/discord/adcash?" + query.toString());
+}
+function formatAdcashReport(data) {
+  const rows = Array.isArray(data.report?.rows) ? data.report.rows : [];
+  const currency = data.meta?.currency || data.balance?.currency || "EUR";
+  const money = value => new Intl.NumberFormat("en", { style: "currency", currency, maximumFractionDigits: 2 }).format(Number(value) || 0);
+  const number = value => new Intl.NumberFormat("en").format(Number(value) || 0);
+  const sum = key => rows.reduce((total, row) => total + (Number(row[key]) || 0), 0);
+  const earnings = sum("earnings"), imps = sum("imps"), clicks = sum("clicks");
+  const ecpm = imps ? earnings / imps * 1000 : 0;
+  const details = rows.slice(0, 8).map(row => "• **" + String(row.site || row.zone || row.country || "Site").slice(0, 60) + "** — " + money(row.earnings) + " · " + number(row.imps) + " imps · " + number(row.clicks) + " clicks").join("\n") || "No report rows returned.";
+  return "## 💰 Adcash Publisher Report\n**Period:** " + data.period.start_date + " → " + data.period.end_date +
+    "\n**Account balance:** " + (data.balance ? money(data.balance.balance) : "Unavailable") +
+    "\n**Earnings:** " + money(earnings) + " · **Impressions:** " + number(imps) +
+    "\n**Clicks:** " + number(clicks) + " · **Average eCPM:** " + money(ecpm) +
+    "\n\n### Site breakdown\n" + details +
+    (data.balanceError ? "\n\nBalance: " + data.balanceError : "") +
+    "\n\n-# Currency: " + currency + " · Grouped row totals";
+}
+
 async function adminAction(action, payload = {}) {
   const response = await fetch(apiBase + "/api/discord/admin", { method: "POST", headers: { Authorization: "Bearer " + integrationToken, "Content-Type": "application/json" }, body: JSON.stringify({ action, actor: payload.actor || "discord", ...payload }), signal: AbortSignal.timeout(15000) });
   const data = await response.json().catch(() => ({}));
@@ -227,6 +266,7 @@ function adminList(title, rows, render) {
   return "## " + title + String.fromCharCode(10) + (rows && rows.length ? rows.map((x,i)=>(i+1)+". "+render(x)).join(String.fromCharCode(10)).slice(0,3800) : "No records found.");
 }
 async function adminSection(section) {
+  if (section === "adcash") return formatAdcashReport(await getAdcashReport("7d"));
   const d = await adminAction(section);
   if (section === "analytics") return "## 📊 Live Website Analytics" + String.fromCharCode(10) + "Players: **" + d.players + (d.playersSampled?"+":"") + "**" + String.fromCharCode(10) + "New · 7 days: **" + d.newPlayers7d + "**" + String.fromCharCode(10) + "Open reports: **" + d.openReports + "**" + String.fromCharCode(10) + "Playing now: **" + d.playingNow + "**" + String.fromCharCode(10) + "Game plays today: **" + d.playsToday + "**" + String.fromCharCode(10) + "Game overrides: **" + d.gameOverrides + "**" + String.fromCharCode(10) + "Admin actions: **" + d.adminActions + "**";
   if (section === "users") return adminList("👥 Recent Players",d.users,u=>"**"+u.displayName+"** · "+u.uid+" · "+u.currencyBalance+" coins · "+(u.banned?"BANNED":"Active"));
@@ -309,7 +349,8 @@ function buildPanelPayload(section, overview) {
       { label: "Reports", value: "reports", emoji: "🚩", default: section === "reports" },
       { label: "Announcements", value: "announcements", emoji: "📢", default: section === "announcements" },
       { label: "Game Listings", value: "games", emoji: "🎮", default: section === "games" },
-      { label: "Admin Activity", value: "activity", emoji: "🧾", default: section === "activity" }
+      { label: "Admin Activity", value: "activity", emoji: "🧾", default: section === "activity" },
+      { label: "Adcash Revenue", value: "adcash", emoji: "💰", default: section === "adcash" }
     );
   const controls = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId("pv:v2:maintenance:on").setLabel("Enable maintenance").setEmoji("🔒").setStyle(ButtonStyle.Danger).setDisabled(!!overview.maintenanceMode),
@@ -329,7 +370,7 @@ function buildPanelPayload(section, overview) {
 }
 
 async function updatePanel(interaction, section = "overview") {
-  if (["analytics","users","reports","announcements","games","activity"].includes(section)) {
+  if (["analytics","users","reports","announcements","games","activity","adcash"].includes(section)) {
     await interaction.update(adminCard(await adminSection(section)));
     return;
   }
@@ -358,12 +399,13 @@ async function handlePrefix(message){
  if(cmd==="serverinfo"){if(!message.guild){await reply("Use this in a server.");return;}await reply("**"+message.guild.name+"**\nMembers: "+message.guild.memberCount+"\nCreated: "+message.guild.createdAt.toDateString());return;}
  if(cmd==="userinfo"||cmd==="avatar"){const u=message.mentions.users.first()||message.author;await reply(cmd==="avatar"?u.displayAvatarURL({size:1024}):"**"+u.tag+"**\nUser ID: "+u.id+"\nCreated: "+u.createdAt.toDateString()+"\n"+u.displayAvatarURL({size:512}));return;}
  if(cmd==="poll"){const bits=pipeParts(raw),q=bits.shift(),opts=bits.filter(Boolean);if(!q||opts.length<2||opts.length>5){await reply("Usage: +poll Question | Option 1 | Option 2 (2–5 options).");return;}const marks=["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"],sent=await message.channel.send("📊 **"+q+"**\n"+opts.map((x,i)=>marks[i]+" "+x).join("\n"));for(let i=0;i<opts.length;i++)await sent.react(marks[i]);return;}
- const adminCommands=new Set(["admin-help","panel","traffic","ai-stats","maintenance","player-search","admin-data","players","reports","announcements","games","activity","player-ban","currency","report-update","announce","announcement-delete","game-setting"]);
+ const adminCommands=new Set(["admin-help","panel","traffic","ai-stats","adcash","maintenance","player-search","admin-data","players","reports","announcements","games","activity","player-ban","currency","report-update","announce","announcement-delete","game-setting"]);
  if(!adminCommands.has(cmd))return;
  if(!isAdmin(message.author.id)){await reply("🔒 Admin access required.");return;}
  const actor=message.author.id;
- if(cmd==="admin-help"){await reply("🔐 PLAYOVIA ADMIN COMMANDS\n+panel · +traffic · +ai-stats · +maintenance on|off\n+player-search PLAYERID · +admin-data analytics|users|reports|announcements|games|activity\n+players · +reports · +announcements · +games · +activity\n+player-ban UID on|off [reason]\n+currency PLAYERID add|remove|set AMOUNT reason\n+report-update ID open|resolved|dismissed|closed\n+announce TITLE | BODY · +announcement-delete ID\n+game-setting SLUG | TITLE | CATEGORY | on|off | DESCRIPTION");return;}
+ if(cmd==="admin-help"){await reply("🔐 PLAYOVIA ADMIN COMMANDS\n+panel · +traffic · +ai-stats · +adcash [today|yesterday|7d|30d] · +maintenance on|off\n+player-search PLAYERID · +admin-data analytics|users|reports|announcements|games|activity\n+players · +reports · +announcements · +games · +activity\n+player-ban UID on|off [reason]\n+currency PLAYERID add|remove|set AMOUNT reason\n+report-update ID open|resolved|dismissed|closed\n+announce TITLE | BODY · +announcement-delete ID\n+game-setting SLUG | TITLE | CATEGORY | on|off | DESCRIPTION");return;}
  if(cmd==="panel"){await message.channel.send(buildPanelPayload("overview",await getOverview()));return;}
+ if(cmd==="adcash"){const range=(parts[0]||"7d").toLowerCase();await reply(formatAdcashReport(await getAdcashReport(range)));return;}
  if(cmd==="traffic"||cmd==="ai-stats"){const d=await getOverview(),t=d.traffic||{},a=d.ai||{};await reply(cmd==="traffic"?"📊 WEBSITE TRAFFIC\nToday: "+(t.todayPageviews||0)+" views\nUnique sessions: "+(t.uniqueSessionsToday||0)+"\nAll-time: "+(t.totalPageviews||0)+"\nTop pages: "+((t.topPages||[]).map(x=>x.path+" ("+x.views+")").join(", ")||"No data"):"🤖 AI USAGE\nTotal: "+(a.total||0)+"\nSuccess: "+(a.success||0)+"\nFailed: "+(a.failed||0)+"\nProviders: "+Object.entries(a.byProvider||{}).map(([k,v])=>k+": "+v).join(", "));return;}
  if(cmd==="maintenance"){const mode=(parts[0]||"").toLowerCase();if(!["on","off"].includes(mode)){await reply("Usage: +maintenance on or +maintenance off");return;}const d=await api("/api/discord/maintenance",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({enabled:mode==="on"})});await reply("Website maintenance: "+(d.maintenanceMode?"ON":"OFF"));return;}
  if(cmd==="player-search"){const d=await adminAction("player_search",{playerId:parts[0]||"",actor}),p=d.player;await reply("PLAYER PROFILE\n"+p.displayName+" · "+(p.username||"—")+"\nPlayer ID: "+d.playerId+"\nUID: "+p.uid+"\nCoins: "+p.currencyBalance+"\nStatus: "+(p.banned?"BANNED":"Active"));return;}
