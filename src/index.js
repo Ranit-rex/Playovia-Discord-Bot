@@ -71,7 +71,7 @@ let voiceRoomPollBusy = false;
 let voiceRoomPollTimer = null;
 
 function safeRoomText(value, max = 80) {
-  return String(value ?? "").replace(/[`*_~|<>@]/g, "").replace(/[\\r\\n]/g, " ").trim().slice(0, max) || "—";
+  return String(value ?? "").replace(/[`*_~|<>@]/g, "").replace(/[\\r\n]/g, " ").trim().slice(0, max) || "—";
 }
 
 function buildVoiceRoomAnnouncement(room, source) {
@@ -87,19 +87,19 @@ function buildVoiceRoomAnnouncement(room, source) {
     .addTextDisplayComponents(text("## 🆕 New StreamForge Room Created"))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
     .addTextDisplayComponents(text(
-      "**Room details**\\n" +
-      "- **Room name:** " + roomName + "\\n" +
-      "- **Room code:** `" + roomId + "`\\n" +
-      "- **Visibility:** " + visibility + "\\n" +
-      "- **Members:** " + members + "/" + maxMembers + "\\n" +
+      "**Room details**\n" +
+      "- **Room name:** " + roomName + "\n" +
+      "- **Room code:** `" + roomId + "`\n" +
+      "- **Visibility:** " + visibility + "\n" +
+      "- **Members:** " + members + "/" + maxMembers + "\n" +
       "- **Created / detected:** " + detectedAt
     ))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
     .addTextDisplayComponents(text(
-      "**Backend details**\\n" +
-      "- **Provider:** " + source.provider + "\\n" +
-      "- **Server:** " + source.server + "\\n" +
-      "- **Endpoint:** `" + endpoint + "`\\n" +
+      "**Backend details**\n" +
+      "- **Provider:** " + source.provider + "\n" +
+      "- **Server:** " + source.server + "\n" +
+      "- **Endpoint:** `" + endpoint + "`\n" +
       "- **Room API:** https://" + endpoint + "/api/voice/rooms/" + roomId
     ))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
@@ -127,7 +127,7 @@ async function pollVoiceRooms() {
         const rooms = Array.isArray(data.rooms) ? data.rooms : [];
         for (const room of rooms) {
           const id = String(room?.roomId || "").trim();
-          if (!/^\\d{6}$/.test(id)) continue;
+          if (!/^\d{6}$/.test(id)) continue;
           const key = source.provider + ":" + source.server + ":" + id;
           if (seenVoiceRooms.has(key)) continue;
           seenVoiceRooms.add(key);
@@ -199,22 +199,22 @@ function buildGameSessionCard(session, elapsedSeconds, exitedAt = null) {
   const elapsed = formatDuration(elapsedSeconds);
   const container = new ContainerBuilder()
     .setAccentColor(playing ? 0x7c5cff : 0x64748b)
-    .addTextDisplayComponents(text('## 🎮 ' + user + '\\n' + status))
+    .addTextDisplayComponents(text('## 🎮 ' + user + '\n' + status))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
     .addTextDisplayComponents(text('### 🕹️ ' + game))
     .addTextDisplayComponents(text(
-      '**👤 Player details**\\n' +
-      '- **Username:** ' + user + '\\n' +
-      '- **Player ID:** `' + playerId + '`\\n' +
-      '- **Account:** ' + (event.loggedIn ? 'Verified Playovia account' : 'Guest / not logged in') + '\\n' +
+      '**👤 Player details**\n' +
+      '- **Username:** ' + user + '\n' +
+      '- **Player ID:** `' + playerId + '`\n' +
+      '- **Account:** ' + (event.loggedIn ? 'Verified Playovia account' : 'Guest / not logged in') + '\n' +
       '- **Device:** ' + String(event.device || 'Unknown device').slice(0, 100)
     ))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
     .addTextDisplayComponents(text(
-      '**⏱️ Session timeline**\\n' +
-      '- **Started on:** ' + startedAt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + '\\n' +
-      '- **Playing from:** ' + startedAt.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }) + '\\n' +
-      '- **Played for:** **' + elapsed + (playing ? ' · LIVE' : '') + '**\\n' +
+      '**⏱️ Session timeline**\n' +
+      '- **Started on:** ' + startedAt.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + '\n' +
+      '- **Playing from:** ' + startedAt.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' }) + '\n' +
+      '- **Played for:** **' + elapsed + (playing ? ' · LIVE' : '') + '**\n' +
       '- **Exited on:** ' + (exitedAt ? new Date(exitedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '— Still playing')
     ))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
