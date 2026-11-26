@@ -71,7 +71,7 @@ let voiceRoomPollBusy = false;
 let voiceRoomPollTimer = null;
 
 function safeRoomText(value, max = 80) {
-  return String(value ?? "").replace(/[`*_~|<>@]/g, "").replace(/[\\r\n]/g, " ").trim().slice(0, max) || "—";
+  return String(value ?? "").replace(/[\r\n]/g, " ").replace(/[\`*_~|<>@]/g, "").trim().slice(0, max) || "—";
 }
 
 function buildVoiceRoomAnnouncement(room, source) {
