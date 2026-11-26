@@ -80,6 +80,8 @@ function buildVoiceRoomAnnouncement(room, source) {
   const visibility = String(room.visibility || "public").toLowerCase() === "private" ? "Private" : "Public";
   const members = Math.max(0, Number(room.memberCount) || (Array.isArray(room.members) ? room.members.length : 0));
   const maxMembers = Math.max(1, Number(room.maxMembers) || 6);
+  const memberNames = Array.isArray(room.members) ? room.members.map(m => safeRoomText(m?.displayName, 24)).filter(name => name !== "—") : [];
+  const memberSummary = memberNames.length ? memberNames.join(", ") : "Names unavailable from room directory";
   const endpoint = new URL(source.url).host;
   const detectedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
   const card = new ContainerBuilder()
@@ -92,7 +94,8 @@ function buildVoiceRoomAnnouncement(room, source) {
       "- **Room code:** `" + roomId + "`\n" +
       "- **Visibility:** " + visibility + "\n" +
       "- **Members:** " + members + "/" + maxMembers + "\n" +
-      "- **Created / detected:** " + detectedAt
+      "- **Member names:** " + memberSummary + "\n" +
+      "- **Detected at:** " + detectedAt
     ))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
     .addTextDisplayComponents(text(
