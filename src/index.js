@@ -56,14 +56,9 @@ function startGameActivityPolling() {
 
 const VOICE_ROOM_LOG_CHANNEL_ID = "1575433765855961178";
 const VOICE_ROOM_SOURCES = [
-  { provider: "Cloudflare", server: "Cloudflare Durable Objects", url: "https://streamforge-cloudflare-voice.mranit66.workers.dev" },
-  { provider: "Render", server: "Legacy", url: "https://streamforge-chat-api.onrender.com" },
-  { provider: "Render", server: "Signal A", url: "https://streamforge-signal-a.onrender.com" },
-  { provider: "Render", server: "Signal B", url: "https://streamforge-signal-b.onrender.com" },
-  { provider: "Render", server: "Signal C", url: "https://streamforge-signal-c.onrender.com" },
-  { provider: "Render", server: "Signal D", url: "https://streamforge-signal-d.onrender.com" },
-  { provider: "Render", server: "Signal E", url: "https://streamforge-signal-e.onrender.com" },
-  { provider: "Render", server: "Signal F", url: "https://streamforge-signal-f.onrender.com" }
+  // One Cloudflare monitor endpoint aggregates Cloudflare + registered Render rooms.
+  // This avoids polling (and waking) every free Render service.
+  { provider: "Cloudflare", server: "Cloudflare Room Directory", url: "https://streamforge-cloudflare-voice.mranit66.workers.dev" }
 ];
 const seenVoiceRooms = new Set();
 let voiceRoomPollingReady = false;
@@ -121,7 +116,7 @@ async function pollVoiceRooms() {
     const discovered = [];
     await Promise.all(VOICE_ROOM_SOURCES.map(async source => {
       try {
-        const response = await fetch(source.url + "/api/voice/rooms", {
+        const response = await fetch(source.url + "/api/voice/monitor/rooms", {
           headers: { Accept: "application/json", "Cache-Control": "no-cache" },
           signal: AbortSignal.timeout(8000)
         });
@@ -131,10 +126,15 @@ async function pollVoiceRooms() {
         for (const room of rooms) {
           const id = String(room?.roomId || "").trim();
           if (!/^\d{6}$/.test(id)) continue;
-          const key = source.provider + ":" + source.server + ":" + id;
+          const roomSource = {
+            provider: String(room.provider || source.provider).toLowerCase() === "render" ? "Render" : "Cloudflare",
+            server: String(room.server || source.server),
+            url: String(room.endpoint || source.url)
+          };
+          const key = roomSource.provider + ":" + roomSource.server + ":" + id;
           if (seenVoiceRooms.has(key)) continue;
           seenVoiceRooms.add(key);
-          if (voiceRoomPollingReady) discovered.push({ room, source });
+          if (voiceRoomPollingReady) discovered.push({ room, source: roomSource });
         }
       } catch (error) {
         console.warn("[Voice room monitor] " + source.server + ": " + (error.message || error));
