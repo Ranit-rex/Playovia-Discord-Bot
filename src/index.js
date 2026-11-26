@@ -79,6 +79,9 @@ function buildVoiceRoomAnnouncement(room, source) {
   const memberSummary = memberNames.length ? memberNames.join(", ") : "Names unavailable from room directory";
   const endpoint = new URL(source.url).host;
   const detectedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  const createdAt = Number(room.createdAt) > 0
+    ? new Date(Number(room.createdAt)).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+    : "Not supplied by backend";
   const card = new ContainerBuilder()
     .setAccentColor(source.provider === "Cloudflare" ? 0x3b82f6 : 0x16a36a)
     .addTextDisplayComponents(text("## 🆕 New StreamForge Room Created"))
@@ -90,6 +93,7 @@ function buildVoiceRoomAnnouncement(room, source) {
       "- **Visibility:** " + visibility + "\n" +
       "- **Members:** " + members + "/" + maxMembers + "\n" +
       "- **Member names:** " + memberSummary + "\n" +
+      "- **Created at:** " + createdAt + "\n" +
       "- **Detected at:** " + detectedAt
     ))
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
