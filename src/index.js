@@ -53,6 +53,112 @@ function startGameActivityPolling() {
   updateGameActivityLog();
   gameActivityTimer = setInterval(updateGameActivityLog, 15000);
 }
+
+const VOICE_ROOM_LOG_CHANNEL_ID = "1575433765855961178";
+const VOICE_ROOM_SOURCES = [
+  { provider: "Cloudflare", server: "Cloudflare Durable Objects", url: "https://streamforge-cloudflare-voice.mranit66.workers.dev" },
+  { provider: "Render", server: "Legacy", url: "https://streamforge-chat-api.onrender.com" },
+  { provider: "Render", server: "Signal A", url: "https://streamforge-signal-a.onrender.com" },
+  { provider: "Render", server: "Signal B", url: "https://streamforge-signal-b.onrender.com" },
+  { provider: "Render", server: "Signal C", url: "https://streamforge-signal-c.onrender.com" },
+  { provider: "Render", server: "Signal D", url: "https://streamforge-signal-d.onrender.com" },
+  { provider: "Render", server: "Signal E", url: "https://streamforge-signal-e.onrender.com" },
+  { provider: "Render", server: "Signal F", url: "https://streamforge-signal-f.onrender.com" }
+];
+const seenVoiceRooms = new Set();
+let voiceRoomPollingReady = false;
+let voiceRoomPollBusy = false;
+let voiceRoomPollTimer = null;
+
+function safeRoomText(value, max = 80) {
+  return String(value ?? "").replace(/[`*_~|<>@]/g, "").replace(/[\\r\\n]/g, " ").trim().slice(0, max) || "—";
+}
+
+function buildVoiceRoomAnnouncement(room, source) {
+  const roomId = safeRoomText(room.roomId, 12);
+  const roomName = safeRoomText(room.name || "Voice Room", 48);
+  const visibility = String(room.visibility || "public").toLowerCase() === "private" ? "Private" : "Public";
+  const members = Math.max(0, Number(room.memberCount) || (Array.isArray(room.members) ? room.members.length : 0));
+  const maxMembers = Math.max(1, Number(room.maxMembers) || 6);
+  const endpoint = new URL(source.url).host;
+  const detectedAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+  const card = new ContainerBuilder()
+    .setAccentColor(source.provider === "Cloudflare" ? 0x3b82f6 : 0x16a36a)
+    .addTextDisplayComponents(text("## 🆕 New StreamForge Room Created"))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
+    .addTextDisplayComponents(text(
+      "**Room details**\\n" +
+      "- **Room name:** " + roomName + "\\n" +
+      "- **Room code:** `" + roomId + "`\\n" +
+      "- **Visibility:** " + visibility + "\\n" +
+      "- **Members:** " + members + "/" + maxMembers + "\\n" +
+      "- **Created / detected:** " + detectedAt
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
+    .addTextDisplayComponents(text(
+      "**Backend details**\\n" +
+      "- **Provider:** " + source.provider + "\\n" +
+      "- **Server:** " + source.server + "\\n" +
+      "- **Endpoint:** `" + endpoint + "`\\n" +
+      "- **Room API:** https://" + endpoint + "/api/voice/rooms/" + roomId
+    ))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
+    .addTextDisplayComponents(text("-# StreamForge Voice Monitor · 60% Cloudflare / 40% Render target"));
+  return { components: [card], flags: V2 };
+}
+
+async function pollVoiceRooms() {
+  if (voiceRoomPollBusy || !client.isReady()) return;
+  voiceRoomPollBusy = true;
+  try {
+    const channel = await client.channels.fetch(VOICE_ROOM_LOG_CHANNEL_ID);
+    if (!channel || !channel.isTextBased() || !channel.send) {
+      throw new Error("Voice room log channel is unavailable or not writable.");
+    }
+    const discovered = [];
+    await Promise.all(VOICE_ROOM_SOURCES.map(async source => {
+      try {
+        const response = await fetch(source.url + "/api/voice/rooms", {
+          headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+          signal: AbortSignal.timeout(8000)
+        });
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        const data = await response.json();
+        const rooms = Array.isArray(data.rooms) ? data.rooms : [];
+        for (const room of rooms) {
+          const id = String(room?.roomId || "").trim();
+          if (!/^\\d{6}$/.test(id)) continue;
+          const key = source.provider + ":" + source.server + ":" + id;
+          if (seenVoiceRooms.has(key)) continue;
+          seenVoiceRooms.add(key);
+          if (voiceRoomPollingReady) discovered.push({ room, source });
+        }
+      } catch (error) {
+        console.warn("[Voice room monitor] " + source.server + ": " + (error.message || error));
+      }
+    }));
+    // Seed the current room list on startup; only rooms appearing after the first
+    // successful sweep are announced, preventing a restart from spamming history.
+    if (!voiceRoomPollingReady) {
+      voiceRoomPollingReady = true;
+      console.log("[Voice room monitor] Initial room inventory loaded.");
+      return;
+    }
+    for (const item of discovered) {
+      await channel.send(buildVoiceRoomAnnouncement(item.room, item.source));
+    }
+  } catch (error) {
+    console.error("[Voice room monitor]", error.message || error);
+  } finally {
+    voiceRoomPollBusy = false;
+  }
+}
+
+function startVoiceRoomPolling() {
+  if (voiceRoomPollTimer) clearInterval(voiceRoomPollTimer);
+  pollVoiceRooms();
+  voiceRoomPollTimer = setInterval(pollVoiceRooms, 10000);
+}
 function formatDuration(seconds) {
   const s = Math.max(0, Number(seconds) || 0);
   const m = Math.floor(s / 60), r = s % 60;
@@ -618,6 +724,10 @@ async function start() {
     : Routes.applicationCommands(process.env.DISCORD_APPLICATION_ID);
   await rest.put(route, { body: commands });
   console.log("Registered Playovia website control commands (voice/music removed).");
+  client.once(Events.ClientReady, () => {
+    console.log("[Voice room monitor] Watching Cloudflare + Render rooms.");
+    startVoiceRoomPolling();
+  });
   await client.login(process.env.DISCORD_BOT_TOKEN);
 }
 
